@@ -5,7 +5,7 @@ Mira là bản đầu tiên của trợ lý cá nhân có tính cách nữ, giao
 ## Cài trên Windows
 
 1. Cài **Python 3.11 trở lên** từ [python.org](https://www.python.org/downloads/) và bật tùy chọn `Add python.exe to PATH` khi cài. Python trên Windows thường có sẵn Tkinter.
-2. Cài [Ollama cho Windows](https://ollama.com/download/windows), sau đó mở Ollama.
+2. Cài [Ollama cho Windows](https://ollama.com/download/windows), sau đó mở Ollama. Ollama hiện yêu cầu Windows 10 22H2 trở lên; cần ít nhất khoảng 4 GB cho ứng dụng và thêm dung lượng cho mô hình. `qwen3:4b` có dung lượng tải khoảng 2,5 GB.
 3. Mở PowerShell và tải một mô hình có hỗ trợ gọi công cụ:
 
    ```powershell
