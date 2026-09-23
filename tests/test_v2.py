@@ -66,6 +66,7 @@ class VisibleComposerTests(unittest.TestCase):
                         self.assertTrue(app.input.winfo_ismapped())
                         self.assertTrue(app.send_button.winfo_ismapped())
                         self.assertTrue(app.avatar.winfo_ismapped())
+                        self.assertTrue(app.phone_button.winfo_ismapped())
                         self.assertGreater(app.input.winfo_height(), 30)
                         self.assertLessEqual(app.input.winfo_rooty() + app.input.winfo_height(),
                                              app.winfo_rooty() + app.winfo_height())
@@ -78,6 +79,16 @@ class VisibleComposerTests(unittest.TestCase):
                         app._cloud_dialog()
                         app.update()
                         self.assertTrue(any(child.title() == "AI cloud cho máy yếu"
+                                            for child in app.winfo_children()
+                                            if isinstance(child, tk.Toplevel)))
+                        app._mobile_dialog()
+                        app.update()
+                        self.assertTrue(any(child.title() == "Điện thoại & truy cập từ xa"
+                                            for child in app.winfo_children()
+                                            if isinstance(child, tk.Toplevel)))
+                        app._telegram_dialog()
+                        app.update()
+                        self.assertTrue(any(child.title() == "Mira qua Telegram"
                                             for child in app.winfo_children()
                                             if isinstance(child, tk.Toplevel)))
                     finally:

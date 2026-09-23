@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#142136">
+  <title>Mira trên điện thoại</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0c1422; color: #f5f8fd; }
+    main { width: min(100%, 720px); min-height: 100dvh; margin: auto; display: flex; flex-direction: column; }
+    header { padding: 20px 18px 12px; background: #142136; }
+    h1 { color: #6ce0c5; margin: 0 0 5px; font-size: 27px; }
+    h2 { margin: 0 0 13px; font-size: 21px; }
+    p { line-height: 1.45; }
+    small, .hint { color: #acc1d4; }
+    .view { padding: 18px; }
+    .card { border-radius: 16px; background: #1b2b42; padding: 18px; margin: 0 0 16px; }
+    .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .row > * { flex: 1; }
+    input, textarea, select { width: 100%; padding: 13px 12px; margin: 6px 0 12px; font: inherit;
+      border: 1px solid #53718a; border-radius: 10px; background: #f7fbff; color: #152337; }
+    textarea { resize: vertical; min-height: 85px; }
+    label { font-size: 14px; color: #acc1d4; font-weight: 600; }
+    button, .button { display: inline-block; padding: 12px 15px; min-height: 44px; border: 0;
+      border-radius: 10px; background: #243b57; color: #f5f8fd; font: 600 15px system-ui;
+      text-align: center; text-decoration: none; cursor: pointer; }
+    button.primary { background: #6ce0c5; color: #152337; }
+    button:disabled { opacity: .55; cursor: wait; }
+    nav { display: flex; gap: 8px; padding: 10px 18px; background: #142136; }
+    nav button[aria-current="page"] { background: #6ce0c5; color: #152337; }
+    #messages { display: flex; flex-direction: column; gap: 12px; padding: 0 0 18px; }
+    .bubble { max-width: 94%; padding: 12px 14px; border-radius: 14px; line-height: 1.48;
+      white-space: pre-wrap; overflow-wrap: anywhere; background: #1b2b42; }
+    .bubble.me { align-self: flex-end; background: #295568; }
+    .bubble strong { display: block; margin-bottom: 4px; color: #6ce0c5; }
+    .bubble.me strong { color: #bad7ff; }
+    #chat-compose { position: sticky; bottom: 0; background: #0c1422; padding: 9px 0 16px; }
+    #chat-compose textarea { margin: 0 0 8px; min-height: 70px; }
+    #error { min-height: 22px; color: #ffc59f; margin: 10px 18px; }
+    .reminder { padding: 12px 0; border-top: 1px solid #38506b; }
+    .reminder strong { display: block; }
+    .reminder small { display: block; margin: 5px 0 10px; }
+    .reminder .row > * { flex: none; }
+    .foot { padding: 5px 18px 24px; font-size: 13px; }
+    @media (max-width: 400px) { header, .view { padding: 14px; } nav { padding: 8px 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header><h1>✦ Mira</h1><small id="model">Trợ lý cá nhân trên điện thoại</small></header>
+  <section class="view" id="pair-view" hidden>
+    <div class="card">
+      <h2>Ghép nối điện thoại</h2>
+      <p>Mở mục <strong>Điện thoại</strong> trên Mira ở máy tính. Nhập mã 8 chữ số hiển thị tại đó. Mã có hiệu lực 5 phút.</p>
+      <label for="pair-code">Mã ghép nối</label>
+      <input id="pair-code" type="text" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code">
+      <button class="primary" id="pair-button">Ghép nối</button>
+    </div>
+  </section>
+  <nav id="tabs" hidden>
+    <button id="tab-chat" aria-current="page">Trò chuyện</button>
+    <button id="tab-reminders">Lịch nhắc</button>
+  </nav>
+  <section class="view" id="chat-view" hidden>
+    <div id="messages" aria-live="polite"></div>
+    <div id="chat-compose">
+      <label for="chat-text">Nhắn Mira</label>
+      <textarea id="chat-text" maxlength="2000" placeholder="Hôm nay mình nên làm gì trước?"></textarea>
+      <button class="primary" id="send-button">Gửi tin nhắn</button>
+      <small>Chat điện thoại lưu riêng. Mira không có quyền đọc/sửa file hoặc chạy lệnh từ trang này.</small>
+    </div>
+  </section>
+  <section class="view" id="reminder-view" hidden>
+    <div class="card">
+      <h2>Tạo lịch nhắc</h2>
+      <label for="draft-text">Nhờ Mira hiểu ngày giờ (tùy chọn)</label>
+      <textarea id="draft-text" maxlength="600" placeholder="Nhắc tôi thứ Sáu lúc 9 giờ gọi mẹ"></textarea>
+      <button id="draft-button">Mira điền biểu mẫu</button>
+      <p class="hint">Kiểm tra lại ngày giờ trước khi bấm Lưu. Mỗi lịch hiện chỉ nhắc một lần.</p>
+      <label for="title">Việc cần nhắc</label>
+      <input id="title" maxlength="120" placeholder="Gọi mẹ">
+      <label for="when">Ngày giờ (múi giờ điện thoại)</label>
+      <input id="when" type="datetime-local" required>
+      <label for="lead">Nhắc trước</label>
+      <select id="lead">
+        <option value="0">Đúng giờ</option><option value="5">5 phút</option>
+        <option value="15">15 phút</option><option value="60">1 giờ</option>
+        <option value="1440">1 ngày</option>
+      </select>
+      <button class="primary" id="save-button">Lưu lịch sau khi kiểm tra</button>
+      <p class="hint">Mira nhắc trên máy tính khi ứng dụng đang mở. Để điện thoại nhắc khi máy tính tắt, tải tệp .ics của lịch và thêm vào ứng dụng Lịch trên điện thoại.</p>
+    </div>
+    <div class="card"><h2>Lịch đã tạo</h2><div id="reminders"></div></div>
+    <div class="card"><h2>Điều khiển toàn bộ máy tính</h2>
+      <p>Dùng Chrome Remote Desktop để nhìn màn hình và điều khiển chuột/bàn phím. Cài và bật quyền truy cập từ xa trên máy tính trước.</p>
+      <a class="button" href="https://remotedesktop.google.com/access" target="_blank" rel="noopener noreferrer">Mở Remote Desktop</a>
+    </div>
+  </section>
+  <p id="error" role="status"></p>
+  <footer class="foot"><small>Chỉ truy cập trong mạng riêng Tailscale; đóng Mira trên máy tính để ngắt kết nối.</small>
+    <button id="logout" hidden>Ngắt ghép nối điện thoại</button></footer>
+</main>
+<script>
+  "use strict";
+  const $ = id => document.getElementById(id);
+  let csrf = "";
+  let currentTab = "chat";
+  const error = message => { $("error").textContent = message || ""; };
+  async function request(path, payload) {
+    const options = {credentials: "same-origin"};
+    if (payload !== undefined) {
+      options.method = "POST";
+      options.headers = {"Content-Type": "application/json", "X-Mira-CSRF": csrf};
+      options.body = JSON.stringify(payload);
+    }
+    const result = await fetch(path, options);
+    const data = await result.json();
+    if (!result.ok) throw new Error(data.error || "Không kết nối được Mira.");
+    return data;
+  }
+  function tab(name) {
+    currentTab = name;
+    $("chat-view").hidden = name !== "chat";
+    $("reminder-view").hidden = name !== "reminders";
+    $("tab-chat").setAttribute("aria-current", name === "chat" ? "page" : "false");
+    $("tab-reminders").setAttribute("aria-current", name === "reminders" ? "page" : "false");
+    error("");
+  }
+  function showPaired(paired) {
+    $("pair-view").hidden = paired;
+    $("tabs").hidden = !paired;
+    $("logout").hidden = !paired;
+    $("chat-view").hidden = !paired || currentTab !== "chat";
+    $("reminder-view").hidden = !paired || currentTab !== "reminders";
+  }
+  function renderMessages(messages) {
+    const container = $("messages");
+    container.replaceChildren();
+    if (!messages.length) {
+      const empty = document.createElement("p");
+      empty.className = "hint";
+      empty.textContent = "Chào bạn! Đây là cuộc trò chuyện riêng trên điện thoại.";
+      container.append(empty);
+    }
+    for (const item of messages) {
+      const bubble = document.createElement("div");
+      bubble.className = "bubble" + (item.role === "user" ? " me" : "");
+      const label = document.createElement("strong");
+      label.textContent = item.role === "user" ? "Bạn" : "Mira";
+      const content = document.createElement("span");
+      content.textContent = item.content;
+      bubble.append(label, content);
+      container.append(bubble);
+    }
+    container.lastElementChild?.scrollIntoView({block: "nearest"});
+  }
+  function renderReminders(items) {
+    const container = $("reminders");
+    container.replaceChildren();
+    if (!items.length) { container.textContent = "Chưa có lịch nhắc."; return; }
+    for (const item of items) {
+      const box = document.createElement("div");
+      box.className = "reminder";
+      const title = document.createElement("strong");
+      title.textContent = item.title;
+      const detail = document.createElement("small");
+      detail.textContent = new Date(item.when).toLocaleString("vi-VN") +
+        (item.notified_at ? " · Đã nhắc" : " · Chưa nhắc");
+      const buttons = document.createElement("div");
+      buttons.className = "row";
+      const download = document.createElement("a");
+      download.className = "button";
+      download.href = "/api/reminders/" + encodeURIComponent(item.id) + ".ics";
+      download.textContent = "Thêm vào lịch điện thoại (.ics)";
+      const remove = document.createElement("button");
+      remove.textContent = "Xóa";
+      remove.addEventListener("click", async () => {
+        if (!confirm("Xóa lịch nhắc này?")) return;
+        try { await request("/api/reminders/delete", {id: item.id}); await refresh(); }
+        catch (ex) { error(ex.message); }
+      });
+      buttons.append(download, remove);
+      box.append(title, detail, buttons);
+      container.append(box);
+    }
+  }
+  async function refresh() {
+    try {
+      const state = await request("/api/state");
+      csrf = state.csrf;
+      showPaired(true);
+      $("model").textContent = state.model + (state.cloud_allowed ? " · sẵn sàng" : " · cần đồng ý cloud trên máy tính");
+      renderMessages(state.messages);
+      renderReminders(state.reminders);
+      error("");
+    } catch (ex) {
+      if (ex.message.includes("ghép nối")) { showPaired(false); csrf = ""; }
+      error(ex.message);
+    }
+  }
+  $("pair-button").addEventListener("click", async () => {
+    try { await request("/api/pair", {code: $("pair-code").value.trim()});
+      $("pair-code").value = ""; await refresh(); }
+    catch (ex) { error(ex.message); }
+  });
+  $("send-button").addEventListener("click", async () => {
+    const text = $("chat-text").value.trim();
+    if (!text) return;
+    $("send-button").disabled = true;
+    error("Mira đang trả lời…");
+    try { await request("/api/chat", {text}); $("chat-text").value = ""; await refresh(); }
+    catch (ex) { error(ex.message); }
+    finally { $("send-button").disabled = false; }
+  });
+  $("draft-button").addEventListener("click", async () => {
+    $("draft-button").disabled = true;
+    error("Mira đang đọc yêu cầu…");
+    try {
+      const draft = await request("/api/reminders/draft", {text: $("draft-text").value,
+        offset_minutes: -new Date().getTimezoneOffset()});
+      $("title").value = draft.title;
+      $("when").value = draft.when;
+      $("lead").value = draft.lead_minutes;
+      error("Hãy kiểm tra ngày giờ rồi bấm Lưu.");
+    } catch (ex) { error(ex.message); }
+    finally { $("draft-button").disabled = false; }
+  });
+  $("save-button").addEventListener("click", async () => {
+    $("save-button").disabled = true;
+    try {
+      const localDate = new Date($("when").value);
+      if (Number.isNaN(localDate.getTime())) throw new Error("Hãy chọn ngày giờ hợp lệ.");
+      await request("/api/reminders", {title: $("title").value, when: $("when").value,
+        lead_minutes: Number($("lead").value), offset_minutes: -localDate.getTimezoneOffset()});
+      $("title").value = ""; $("when").value = "";
+      await refresh(); error("Đã lưu lịch nhắc. Tải .ics nếu muốn điện thoại báo khi máy tính tắt.");
+    } catch (ex) { error(ex.message); }
+    finally { $("save-button").disabled = false; }
+  });
+  $("tab-chat").addEventListener("click", () => tab("chat"));
+  $("tab-reminders").addEventListener("click", () => { tab("reminders"); refresh(); });
+  $("logout").addEventListener("click", async () => {
+    try { await request("/api/logout", {}); csrf = ""; showPaired(false); error("Đã ngắt ghép nối."); }
+    catch (ex) { error(ex.message); }
+  });
+  refresh();
+</script>
+</body>
+</html>

@@ -10,14 +10,18 @@ import sys
 import time
 import tkinter as tk
 import webbrowser
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .agent import Agent, is_cloud_model
+from .mobile_server import PhoneServer
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
+from .reminders import ReminderStore, draft_reminder
 from .speech import SpeechPlayer
 from .storage import ConversationStore, MemoryStore, data_dir, load_json, save_json
+from .telegram_bot import TelegramBot
 from .workspace import Workspace, WorkspaceError
 
 
@@ -45,7 +49,12 @@ class MiraApp(tk.Tk):
         self.memories = MemoryStore(self.path / "memories.json")
         self.preferences = PreferenceStore(self.path / "preferences.json")
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
+        self.reminders = ReminderStore(self.path / "reminders.json")
         self.agent = Agent()
+        self.phone_server: PhoneServer | None = None
+        self.telegram_bot: TelegramBot | None = None
+        self.telegram_token: str | None = None
+        self.telegram_credentials_path = self.path / "telegram_credentials.json"
         self.speaker = SpeechPlayer()
         self.busy = False
         self.closed = False
@@ -98,6 +107,13 @@ class MiraApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.after(200, self._check_ollama)
         self.after(280, self._animate_avatar)
+        self.after(5_000, self._poll_reminders)
+        saved_bot = load_json(self.telegram_credentials_path, {})
+        if isinstance(saved_bot, dict) and saved_bot.get("enabled") and isinstance(saved_bot.get("token"), str):
+            try:
+                self._start_telegram(saved_bot["token"])
+            except (OSError, ValueError):
+                self.status_var.set("Telegram chưa kết nối được; mở mục Điện thoại để kiểm tra.")
 
     def _button(self, parent, label, command, *, primary=False, subtle=False):
         return tk.Button(parent, text=label, command=command, relief="flat", cursor="hand2",
@@ -113,15 +129,18 @@ class MiraApp(tk.Tk):
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
-        sidebar.grid_rowconfigure(3, weight=1)
+        sidebar.grid_rowconfigure(4, weight=1)
         tk.Label(sidebar, text="✦  Mira", bg=SIDE, fg=ACCENT,
                  font=("Segoe UI", 23, "bold"), anchor="w").grid(row=0, column=0, sticky="ew")
         tk.Label(sidebar, text="Trợ lý trên máy tính của bạn", bg=SIDE, fg=MUTED,
                  font=("Segoe UI", 10), anchor="w").grid(row=1, column=0, sticky="ew", pady=(0, 24))
         self._button(sidebar, "+  Cuộc trò chuyện mới", self._new_chat, primary=True).grid(
             row=2, column=0, sticky="ew", pady=(0, 17))
+        self.phone_button = self._button(sidebar, "📱  Điện thoại & lịch nhắc",
+                                         self._mobile_dialog, subtle=True)
+        self.phone_button.grid(row=3, column=0, sticky="ew", pady=(0, 9))
         archive = tk.Frame(sidebar, bg=SIDE)
-        archive.grid(row=3, column=0, sticky="nsew")
+        archive.grid(row=4, column=0, sticky="nsew")
         archive.grid_columnconfigure(0, weight=1)
         archive.grid_rowconfigure(1, weight=1)
         tk.Label(archive, text="LỊCH SỬ TRÒ CHUYỆN", bg=SIDE, fg=MUTED,
@@ -132,21 +151,36 @@ class MiraApp(tk.Tk):
         self.chat_list.grid(row=1, column=0, sticky="nsew")
         self.chat_list.bind("<<ListboxSelect>>", self._select_chat)
         actions = tk.Frame(sidebar, bg=SIDE)
-        actions.grid(row=4, column=0, sticky="ew", pady=(13, 11))
+        actions.grid(row=5, column=0, sticky="ew", pady=(8, 8))
         self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
         self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
-        self._button(sidebar, "📁  Chọn thư mục làm việc", self._choose_folder, subtle=True).grid(
-            row=5, column=0, sticky="ew", pady=3)
-        self._button(sidebar, "✦  Dạy Mira / bộ nhớ", self._show_memories, subtle=True).grid(
-            row=6, column=0, sticky="ew", pady=3)
-        self._button(sidebar, "⚙  Mô hình & cài đặt", self._settings_dialog, subtle=True).grid(
-            row=7, column=0, sticky="ew", pady=3)
-        self._button(sidebar, "🚀  Mô hình mạnh & tốc độ", self._model_lab_dialog, subtle=True).grid(
-            row=8, column=0, sticky="ew", pady=3)
-        self._button(sidebar, "☁  AI cloud cho máy yếu", self._cloud_dialog, subtle=True).grid(
-            row=9, column=0, sticky="ew", pady=3)
-        self._button(sidebar, "↥  Xuất cuộc trò chuyện", self._export_chat, subtle=True).grid(
-            row=10, column=0, sticky="ew", pady=(3, 0))
+        tools = tk.Frame(sidebar, bg=SIDE)
+        tools.grid(row=6, column=0, sticky="ew")
+        tools.grid_columnconfigure(0, weight=1)
+        canvas = tk.Canvas(tools, bg=SIDE, height=220, highlightthickness=0, bd=0)
+        canvas.grid(row=0, column=0, sticky="ew")
+        scrollbar = tk.Scrollbar(tools, orient="vertical", command=canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        menu = tk.Frame(canvas, bg=SIDE)
+        menu.grid_columnconfigure(0, weight=1)
+        window = canvas.create_window((0, 0), window=menu, anchor="nw")
+        menu.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+        for row, (label, command) in enumerate((
+            ("📁  Chọn thư mục làm việc", self._choose_folder),
+            ("✦  Dạy Mira / bộ nhớ", self._show_memories),
+            ("⚙  Mô hình & cài đặt", self._settings_dialog),
+            ("🚀  Mô hình mạnh & tốc độ", self._model_lab_dialog),
+            ("☁  AI cloud cho máy yếu", self._cloud_dialog),
+            ("↥  Xuất cuộc trò chuyện", self._export_chat),
+        )):
+            button = self._button(menu, label, command, subtle=True)
+            button.grid(row=row, column=0, sticky="ew", pady=3)
+            button.bind("<MouseWheel>", lambda event: canvas.yview_scroll(
+                -1 if event.delta > 0 else 1, "units"))
+        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(
+            -1 if event.delta > 0 else 1, "units"))
 
         main = tk.Frame(self, bg=BG, padx=23, pady=16)
         main.grid(row=0, column=1, sticky="nsew")
@@ -263,6 +297,18 @@ class MiraApp(tk.Tk):
             "active_chat_id": self.active_chat_id,
             "current_chat": self.active_chat_id,
         })
+        if self.phone_server:
+            self.phone_server.update_config(
+                model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
+                cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                persona="playful" if self.playful_var.get() else "standard",
+                persona_note=self.persona_note)
+        if self.telegram_bot:
+            self.telegram_bot.update_config(
+                model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
+                cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                persona="playful" if self.playful_var.get() else "standard",
+                persona_note=self.persona_note)
 
     def _toggle_persona(self):
         try:
@@ -274,6 +320,12 @@ class MiraApp(tk.Tk):
 
     def _close(self):
         self.closed = True
+        if self.phone_server:
+            self.phone_server.stop()
+            self.phone_server = None
+        if self.telegram_bot:
+            self.telegram_bot.stop()
+            self.telegram_bot = None
         self.speaker.stop()
         if getattr(self, "model_download_proc", None):
             process = self.model_download_proc
@@ -286,6 +338,21 @@ class MiraApp(tk.Tk):
         except OSError:
             pass
         self.destroy()
+
+    def _poll_reminders(self):
+        if self.closed:
+            return
+        try:
+            due = self.reminders.due()
+            if due:
+                lines = ["• " + item["title"] for item in due]
+                self.status_var.set(f"Đã đến giờ {len(due)} lịch nhắc.")
+                messagebox.showinfo("Mira nhắc bạn", "Đã tới lúc:\n" + "\n".join(lines), parent=self)
+        except (OSError, ValueError) as exc:
+            self.status_var.set("Không kiểm tra được lịch nhắc: " + str(exc))
+        finally:
+            if not self.closed:
+                self.after(30_000, self._poll_reminders)
 
     def _animate_avatar(self):
         if self.closed:
@@ -561,6 +628,325 @@ class MiraApp(tk.Tk):
         self._button(controls, "Bộ sở thích", lambda: open_preference_dialog(self, self.preferences,
                      self._button)).pack(side="right")
         reload()
+
+    def _mobile_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Điện thoại & truy cập từ xa")
+        dialog.geometry("670x570")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Chat với Mira từ điện thoại", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
+        instructions = ("1. Cài Tailscale trên máy tính và điện thoại; đăng nhập cùng tài khoản.\n"
+                        "2. Bấm Bật giao diện dưới đây. Trong PowerShell trên máy tính chạy:\n"
+                        "    tailscale serve --bg 8765\n"
+                        "3. Mở địa chỉ HTTPS do Tailscale in ra trên điện thoại, rồi nhập mã ghép nối.")
+        tk.Label(dialog, text=instructions, bg=BG, fg=TEXT, wraplength=625,
+                 justify="left").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Giao diện chỉ lắng nghe 127.0.0.1; dùng Tailscale Serve để "
+                 "mở riêng cho các thiết bị trong mạng của bạn. Không dùng Funnel hoặc mở cổng router.",
+                 bg=BG, fg=MUTED, wraplength=625, justify="left").pack(
+                     anchor="w", padx=20, pady=(9, 12))
+        status = tk.StringVar(value="Đang tắt • chưa ai có thể chat qua điện thoại")
+        code = tk.StringVar(value="—")
+        tk.Label(dialog, textvariable=status, bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Mã ghép nối chỉ dùng một lần, hết hạn sau 5 phút:",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(12, 2))
+        tk.Label(dialog, textvariable=code, bg=PANEL, fg=ACCENT, padx=14, pady=8,
+                 font=("Consolas", 20, "bold")).pack(anchor="w", padx=20)
+
+        def start():
+            if self.phone_server is None:
+                try:
+                    server = PhoneServer(
+                        self.path, self.agent, self.reminders, self.memories, self.preferences,
+                        model=self.model_var.get().strip(), name=self.name_var.get().strip() or "Mira",
+                        cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                        persona="playful" if self.playful_var.get() else "standard",
+                        persona_note=self.persona_note)
+                    server.start()
+                    self.phone_server = server
+                except (OSError, ValueError) as exc:
+                    messagebox.showerror("Không bật được điện thoại", str(exc), parent=dialog)
+                    return
+            code.set(self.phone_server.new_pairing_code())
+            status.set("Đã bật • mở trang riêng qua Tailscale Serve và nhập mã bên dưới")
+
+        def stop():
+            if self.phone_server:
+                self.phone_server.stop()
+                self.phone_server = None
+            code.set("—")
+            status.set("Đã tắt • các phiên điện thoại vừa bị ngắt")
+
+        controls = tk.Frame(dialog, bg=BG)
+        controls.pack(fill="x", padx=20, pady=(14, 12))
+        self._button(controls, "Bật / tạo mã mới", start, primary=True).pack(side="left")
+        self._button(controls, "Ngắt kết nối", stop).pack(side="left", padx=8)
+        self._button(controls, "Lịch nhắc", self._reminders_dialog).pack(side="left")
+        self._button(controls, "Nhắc qua Telegram", self._telegram_dialog).pack(side="left", padx=(8, 0))
+        tk.Label(dialog, text="Chat trên điện thoại lưu riêng và không cấp quyền đọc file, "
+                 "sửa code hay chạy lệnh. Nếu chọn mô hình cloud, Mira chỉ gửi sau khi "
+                 "bạn đã đồng ý ở mục Ollama Cloud trên máy tính.",
+                 bg=BG, fg=MUTED, wraplength=625, justify="left").pack(anchor="w", padx=20)
+        links = tk.Frame(dialog, bg=BG)
+        links.pack(fill="x", padx=20, pady=(13, 0))
+        self._button(links, "Cài Tailscale", lambda: webbrowser.open(
+            "https://tailscale.com/download")).pack(side="left")
+        self._button(links, "Điều khiển màn hình máy tính", lambda: webbrowser.open(
+            "https://remotedesktop.google.com/access")).pack(side="left", padx=7)
+        tk.Label(dialog, text="Điều khiển chuột/bàn phím từ điện thoại cần cài Chrome "
+                 "Remote Desktop trên máy tính. Máy phải bật và không ngủ.",
+                 bg=BG, fg="#ffc59f", wraplength=625, justify="left").pack(
+                     anchor="w", padx=20, pady=(12, 0))
+        if self.phone_server:
+            code.set(self.phone_server.new_pairing_code())
+            status.set("Đã bật • mã mới vừa được tạo cho điện thoại")
+
+    def _start_telegram(self, token: str):
+        if self.telegram_bot and self.telegram_token == token and self.telegram_bot.running():
+            return
+        candidate = TelegramBot(self.path, token, self.agent, self.reminders,
+                                self.memories, self.preferences,
+                                model=self.model_var.get().strip(),
+                                name=self.name_var.get().strip() or "Mira",
+                                cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                                persona="playful" if self.playful_var.get() else "standard",
+                                persona_note=self.persona_note)
+        if self.telegram_bot:
+            self.telegram_bot.stop()
+        self.telegram_bot = candidate
+        self.telegram_token = token
+        candidate.start()
+
+    def _telegram_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mira qua Telegram")
+        dialog.geometry("650x530")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Mira nhắn lịch qua Telegram", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(17, 8))
+        tk.Label(dialog, text="1. Nhắn /newbot cho @BotFather trên Telegram. Sao chép token bot.\n"
+                 "2. Dán token vào đây và bấm Bật. Chờ trạng thái sẵn sàng.\n"
+                 "3. Trên điện thoại, mở bot của bạn và gửi /start theo sau là mã 8 chữ số.",
+                 bg=BG, fg=TEXT, justify="left", wraplength=605).pack(anchor="w", padx=20)
+        self._button(dialog, "Mở @BotFather", lambda: webbrowser.open(
+            "https://t.me/BotFather")).pack(anchor="w", padx=20, pady=(9, 7))
+        tk.Label(dialog, text="Token bot (chỉ nhập trong Mira; không gửi cho người khác)",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        token_entry = tk.Entry(dialog, show="•", font=("Consolas", 11), bg="#f7fbff", fg=INK)
+        token_entry.pack(fill="x", padx=20, pady=(4, 9))
+        saved = load_json(self.telegram_credentials_path, {})
+        if isinstance(saved, dict) and isinstance(saved.get("token"), str):
+            token_entry.insert(0, saved["token"])
+        elif self.telegram_token:
+            token_entry.insert(0, self.telegram_token)
+        remember = tk.BooleanVar(value=bool(isinstance(saved, dict) and saved.get("token")))
+        tk.Checkbutton(dialog, text="Lưu token trong hồ sơ Windows và tự bật khi mở Mira",
+                       variable=remember, bg=BG, fg=TEXT, activebackground=BG,
+                       activeforeground=TEXT, selectcolor=PANEL).pack(anchor="w", padx=20)
+        status = tk.StringVar(value="Telegram chưa bật")
+        code = tk.StringVar(value="—")
+        tk.Label(dialog, textvariable=status, bg=BG, fg=ACCENT,
+                 wraplength=605).pack(anchor="w", padx=20, pady=(9, 3))
+        tk.Label(dialog, text="Mã ghép nối một lần, hiệu lực 5 phút:", bg=BG,
+                 fg=MUTED).pack(anchor="w", padx=20)
+        tk.Label(dialog, textvariable=code, bg=PANEL, fg=ACCENT, padx=14, pady=8,
+                 font=("Consolas", 20, "bold")).pack(anchor="w", padx=20, pady=(4, 0))
+
+        def activate():
+            token = token_entry.get().strip()
+            try:
+                self._start_telegram(token)
+                if remember.get():
+                    save_json(self.telegram_credentials_path, {"token": token, "enabled": True})
+                else:
+                    self.telegram_credentials_path.unlink(missing_ok=True)
+                code.set(self.telegram_bot.new_pairing_code())
+                status.set(self.telegram_bot.status())
+            except (OSError, ValueError) as exc:
+                messagebox.showerror("Không bật được Telegram", str(exc), parent=dialog)
+
+        def disable():
+            if self.telegram_bot:
+                self.telegram_bot.stop()
+                self.telegram_bot = None
+                self.telegram_token = None
+            if remember.get():
+                save_json(self.telegram_credentials_path,
+                          {"token": token_entry.get().strip(), "enabled": False})
+            else:
+                self.telegram_credentials_path.unlink(missing_ok=True)
+            status.set("Đã tắt Telegram")
+            code.set("—")
+
+        def revoke():
+            if self.telegram_bot and messagebox.askyesno(
+                    "Thu hồi điện thoại", "Ngắt quyền bot của điện thoại đã ghép nối?", parent=dialog):
+                try:
+                    self.telegram_bot.unpair()
+                    code.set(self.telegram_bot.new_pairing_code())
+                    status.set("Đã thu hồi; điện thoại cần ghép nối lại")
+                except OSError as exc:
+                    messagebox.showerror("Không thu hồi được", str(exc), parent=dialog)
+
+        buttons = tk.Frame(dialog, bg=BG)
+        buttons.pack(fill="x", padx=20, pady=(12, 7))
+        self._button(buttons, "Bật / tạo mã mới", activate, primary=True).pack(side="left")
+        self._button(buttons, "Tắt", disable).pack(side="left", padx=7)
+        self._button(buttons, "Thu hồi điện thoại", revoke).pack(side="left")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        tk.Label(dialog, text=f"Trên Telegram: /nhac {tomorrow} 09:00 | Gọi mẹ → "
+                 "kiểm tra → bấm Lưu. Hoặc /nhac Nhắc tôi ngày mai lúc 9 giờ gọi mẹ "
+                 "để AI điền bản nháp. /lich xem lịch. Chat thường không có quyền sửa file hay chạy lệnh.",
+                 bg=BG, fg=MUTED, wraplength=605, justify="left").pack(
+                     anchor="w", padx=20, pady=(4, 0))
+
+        def refresh():
+            if not dialog.winfo_exists() or self.closed:
+                return
+            if self.telegram_bot:
+                status.set(self.telegram_bot.status())
+            dialog.after(1200, refresh)
+
+        refresh()
+
+    def _reminders_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Lịch nhắc của Mira")
+        dialog.geometry("650x610")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Lịch nhắc của Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(15, 7))
+        tk.Label(dialog, text="Nhắc trên máy khi Mira đang mở. Xuất .ics để "
+                 "ứng dụng lịch trên điện thoại nhắc khi máy tính tắt.", bg=BG, fg=MUTED,
+                 wraplength=600, justify="left").pack(anchor="w", padx=20)
+        idea = tk.Entry(dialog, font=("Segoe UI", 11), bg="#f7fbff", fg=INK)
+        idea.pack(fill="x", padx=20, pady=(13, 4))
+        idea.insert(0, "Nhắc tôi ngày mai lúc 9 giờ...")
+        form = tk.Frame(dialog, bg=BG)
+        form.pack(fill="x", padx=20, pady=6)
+        tk.Label(form, text="Nội dung", bg=BG, fg=TEXT).grid(row=0, column=0, sticky="w")
+        tk.Label(form, text="Ngày giờ YYYY-MM-DD HH:MM", bg=BG, fg=TEXT).grid(
+            row=0, column=1, sticky="w", padx=8)
+        title = tk.Entry(form, font=("Segoe UI", 11), bg="#f7fbff", fg=INK)
+        title.grid(row=1, column=0, sticky="ew")
+        when = tk.Entry(form, font=("Segoe UI", 11), bg="#f7fbff", fg=INK)
+        when.grid(row=1, column=1, sticky="ew", padx=8)
+        form.grid_columnconfigure(0, weight=1)
+        form.grid_columnconfigure(1, weight=1)
+        lead_labels = {"Đúng giờ": 0, "Trước 5 phút": 5, "Trước 15 phút": 15,
+                       "Trước 1 giờ": 60, "Trước 1 ngày": 1440}
+        lead = ttk.Combobox(dialog, values=list(lead_labels), state="readonly", font=("Segoe UI", 10))
+        lead.set("Đúng giờ")
+        lead.pack(anchor="w", padx=20, pady=(3, 7))
+        status = tk.StringVar(value="Mira chỉ gợi ý lịch; bạn kiểm tra và bấm Lưu để xác nhận.")
+        tk.Label(dialog, textvariable=status, bg=BG, fg=MUTED, wraplength=600,
+                 justify="left").pack(anchor="w", padx=20)
+        listing = tk.Listbox(dialog, font=("Segoe UI", 10), bg=PANEL, fg=TEXT,
+                             selectbackground="#325976", relief="flat", activestyle="none")
+        listing.pack(fill="both", expand=True, padx=20, pady=11)
+        ids = []
+
+        def refresh():
+            ids.clear()
+            listing.delete(0, "end")
+            for item in self.reminders.list():
+                stamp = datetime.fromisoformat(item["when"]).astimezone().strftime("%d/%m/%Y %H:%M")
+                listing.insert("end", f"{stamp}  •  {item['title']}" +
+                               ("  ✓" if item.get("notified_at") else ""))
+                ids.append(item["id"])
+
+        def selected_id():
+            selected = listing.curselection()
+            if not selected:
+                status.set("Hãy chọn một lịch trong danh sách trước.")
+                return None
+            return ids[selected[0]]
+
+        def save():
+            try:
+                self.reminders.create(title.get(), when.get(), lead_labels[lead.get()])
+                refresh()
+                status.set("Đã lưu lịch. Mira sẽ nhắc khi đang mở trên máy tính.")
+            except (OSError, ValueError, KeyError) as exc:
+                messagebox.showerror("Không tạo được lịch", str(exc), parent=dialog)
+
+        def propose():
+            model = self.model_var.get().strip()
+            if not self._confirm_cloud(model, parent=dialog):
+                return
+            try:
+                self._save_settings()
+            except OSError as exc:
+                messagebox.showerror("Không lưu được", str(exc), parent=dialog)
+                return
+            request = idea.get().strip()
+            status.set("Mira đang hiểu ngày giờ…")
+
+            def run():
+                try:
+                    offset = int(datetime.now().astimezone().utcoffset().total_seconds() / 60)
+                    draft = draft_reminder(self.agent.client, model, request, offset)
+                    error = None
+                except (ValueError, RuntimeError, OSError) as exc:
+                    draft, error = None, str(exc)
+
+                def finish():
+                    if self.closed or not dialog.winfo_exists():
+                        return
+                    if error:
+                        status.set(error)
+                    else:
+                        title.delete(0, "end")
+                        title.insert(0, draft["title"])
+                        when.delete(0, "end")
+                        when.insert(0, draft["when"].replace("T", " "))
+                        lead.set(next((key for key, value in lead_labels.items()
+                                       if value == draft["lead_minutes"]), "Đúng giờ"))
+                        status.set("Mira đã điền biểu mẫu. Hãy kiểm tra ngày giờ và bấm Lưu.")
+
+                try:
+                    self.after(0, finish)
+                except RuntimeError:
+                    pass
+
+            threading.Thread(target=run, daemon=True).start()
+
+        def export():
+            item_id = selected_id()
+            if item_id is None:
+                return
+            filename = filedialog.asksaveasfilename(title="Xuất lịch cho điện thoại", parent=dialog,
+                                                    defaultextension=".ics", initialfile="mira-reminder.ics",
+                                                    filetypes=[("Lịch", "*.ics")])
+            if filename:
+                try:
+                    Path(filename).write_bytes(self.reminders.calendar_file(item_id))
+                    status.set("Đã xuất lịch; hãy thêm file vào ứng dụng Lịch trên điện thoại.")
+                except (ValueError, OSError) as exc:
+                    messagebox.showerror("Không xuất được lịch", str(exc), parent=dialog)
+
+        def delete():
+            item_id = selected_id()
+            if item_id and messagebox.askyesno("Xóa lịch nhắc", "Bạn muốn xóa lịch đã chọn?", parent=dialog):
+                try:
+                    self.reminders.delete(item_id)
+                    refresh()
+                    status.set("Đã xóa lịch nhắc trên Mira.")
+                except (ValueError, OSError) as exc:
+                    messagebox.showerror("Không xóa được lịch", str(exc), parent=dialog)
+
+        controls = tk.Frame(dialog, bg=BG)
+        controls.pack(fill="x", padx=20, pady=(0, 15))
+        self._button(controls, "Mira đọc lịch", propose).pack(side="left")
+        self._button(controls, "Lưu lịch", save, primary=True).pack(side="left", padx=7)
+        self._button(controls, "Xuất .ics", export).pack(side="left")
+        self._button(controls, "Xóa", delete).pack(side="right")
+        refresh()
 
     def _model_lab_dialog(self):
         dialog = tk.Toplevel(self)
