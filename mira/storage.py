@@ -80,6 +80,9 @@ class MemoryStore:
         save_json(self.path, updated)
         self.items = updated
 
+    # Keep the v2 API used by existing installations and their checks.
+    update = edit
+
     def prompt(self) -> str:
         return "\n".join(f"- {item['text']}" for item in self.items)
 
@@ -160,11 +163,21 @@ class ConversationStore:
                    or not isinstance(m.get("content"), str) for m in item["messages"]):
                 raise ValueError("Tin nhắn đã lưu không đúng định dạng.")
 
-    def get(self, chat_id: str) -> dict:
+    def get(self, chat_id: str) -> dict | None:
         for item in self.items:
             if item["id"] == chat_id:
                 return item
-        raise ValueError("Không tìm thấy cuộc trò chuyện.")
+        return None
+
+    def list(self) -> list[dict]:
+        return list(self.items)
+
+    def messages(self, chat_id: str) -> list[dict]:
+        item = self.get(chat_id)
+        return list(item["messages"]) if item else []
+
+    def create(self) -> str:
+        return self.new()["id"]
 
     def new(self) -> dict:
         item = self._item("Cuộc trò chuyện mới")
@@ -177,6 +190,8 @@ class ConversationStore:
         if role not in {"user", "assistant"} or not isinstance(content, str):
             raise ValueError("Tin nhắn không hợp lệ.")
         item = self.get(chat_id)
+        if item is None:
+            raise ValueError("Không tìm thấy cuộc trò chuyện.")
         messages = item["messages"] + [{"role": role, "content": content}]
         title = item.get("title", "Cuộc trò chuyện mới")
         if role == "user" and not any(m["role"] == "user" for m in item["messages"]):

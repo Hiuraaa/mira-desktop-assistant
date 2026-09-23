@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import threading
 import queue
+import shutil
+import subprocess
+import sys
 import time
 import tkinter as tk
 import webbrowser
@@ -43,6 +46,8 @@ class MiraApp(tk.Tk):
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
         self.agent = Agent()
         self.busy = False
+        self.closed = False
+        self.pending_approval: threading.Event | None = None
         self.retry_text: str | None = None
         self.retry_chat_id: str | None = None
         self.retry_image: bytes | None = None
@@ -71,7 +76,7 @@ class MiraApp(tk.Tk):
         if not self.chats.items:
             self.active_chat_id = self.chats.new()["id"]
         else:
-            selected = settings.get("active_chat_id")
+            selected = settings.get("active_chat_id") or settings.get("current_chat")
             ids = {item["id"] for item in self.chats.items}
             self.active_chat_id = selected if selected in ids else self.chats.items[0]["id"]
 
@@ -129,7 +134,7 @@ class MiraApp(tk.Tk):
         main = tk.Frame(self, bg=BG, padx=23, pady=16)
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
-        main.grid_rowconfigure(3, weight=1)
+        main.grid_rowconfigure(4, weight=1)
         head = tk.Frame(main, bg=BG)
         head.grid(row=0, column=0, sticky="ew")
         tk.Label(head, textvariable=self.title_var, bg=BG, fg=TEXT,
@@ -145,8 +150,13 @@ class MiraApp(tk.Tk):
         self._button(health, "Kiểm tra lại", self._check_ollama).pack(side="right", padx=(8, 0))
         self._button(health, "Cách cài", self._setup_guide).pack(side="right")
 
+        project_actions = tk.Frame(main, bg=BG)
+        project_actions.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self._button(project_actions, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 8))
+        self._button(project_actions, "▶ Chạy kiểm thử", self._run_tests).pack(side="left")
+
         self.starters = tk.Frame(main, bg=BG)
-        self.starters.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        self.starters.grid(row=3, column=0, sticky="ew", pady=(0, 10))
         for label, prompt in (
             ("Giải thích lỗi code", "Giúp tôi hiểu và sửa lỗi code này: "),
             ("Tìm trong dự án", "Tìm trong thư mục đã chọn nơi xử lý: "),
@@ -157,7 +167,7 @@ class MiraApp(tk.Tk):
                 side="left", padx=(0, 8))
 
         conversation = tk.Frame(main, bg=PANEL)
-        conversation.grid(row=3, column=0, sticky="nsew")
+        conversation.grid(row=4, column=0, sticky="nsew")
         conversation.grid_columnconfigure(0, weight=1)
         conversation.grid_rowconfigure(0, weight=1)
         self.output = tk.Text(conversation, wrap="word", state="disabled", bg=PANEL, fg=TEXT,
@@ -171,7 +181,7 @@ class MiraApp(tk.Tk):
         self.output.tag_configure("you", foreground="#a9caff", font=("Segoe UI", 11, "bold"))
 
         composer = tk.Frame(main, bg=BG, pady=14)
-        composer.grid(row=4, column=0, sticky="ew")
+        composer.grid(row=5, column=0, sticky="ew")
         composer.grid_columnconfigure(0, weight=1)
         tk.Label(composer, text="NHẮN MIRA", bg=BG, fg=ACCENT, anchor="w",
                  font=("Segoe UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
@@ -195,7 +205,7 @@ class MiraApp(tk.Tk):
                  font=("Segoe UI", 9), width=30, anchor="w").pack(side="left", padx=8)
         self._button(attachment, "Bỏ ảnh", self._clear_image).pack(side="right")
         status = tk.Frame(main, bg=BG)
-        status.grid(row=5, column=0, sticky="ew")
+        status.grid(row=6, column=0, sticky="ew")
         tk.Label(status, textvariable=self.status_var, bg=BG, fg=MUTED,
                  anchor="w", font=("Segoe UI", 9)).pack(side="left", fill="x", expand=True)
         self.retry_button = self._button(status, "Thử gửi lại", self._retry)
@@ -208,9 +218,13 @@ class MiraApp(tk.Tk):
             "fast_mode": self.fast_var.get(),
             "folder": str(self.workspace.root) if self.workspace else "",
             "active_chat_id": self.active_chat_id,
+            "current_chat": self.active_chat_id,
         })
 
     def _close(self):
+        self.closed = True
+        if self.pending_approval:
+            self.pending_approval.set()
         try:
             self._save_settings()
         except OSError:
@@ -343,6 +357,72 @@ class MiraApp(tk.Tk):
                 self._save_settings()
             except (WorkspaceError, OSError) as exc:
                 messagebox.showerror("Thư mục không hợp lệ", str(exc))
+
+    def _attach_file(self):
+        if not self.workspace:
+            messagebox.showinfo("Chọn thư mục", "Hãy chọn thư mục làm việc trước khi chọn file.")
+            return
+        filename = filedialog.askopenfilename(title="Chọn file trong thư mục đã cho phép",
+                                              initialdir=str(self.workspace.root))
+        if not filename:
+            return
+        try:
+            relative = Path(filename).resolve().relative_to(self.workspace.root).as_posix()
+            self.workspace._path(relative)
+        except (ValueError, WorkspaceError):
+            messagebox.showerror("Ngoài phạm vi", "File phải thuộc thư mục đã chọn và không phải symlink.")
+            return
+        previous = self.input.get("1.0", "end").strip()
+        self.input.delete("1.0", "end")
+        self.input.insert("1.0", (previous + "\n" if previous else "") +
+                          "Hãy đọc file " + relative + " và giúp tôi: ")
+        self.input.focus_set()
+
+    def _run_tests(self):
+        if self.busy or not self.workspace:
+            messagebox.showinfo("Chọn thư mục", "Hãy chọn thư mục dự án trước.")
+            return
+        root = self.workspace.root
+        if (root / "tests").is_dir():
+            args = [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"]
+            display = "python -m unittest discover -s tests -v"
+        elif (root / "package.json").is_file() and shutil.which("npm"):
+            args, display = ["npm", "test"], "npm test"
+        else:
+            messagebox.showinfo("Chưa có bộ kiểm thử", "Cần thư mục tests (Python) hoặc package.json (npm).")
+            return
+        if not messagebox.askyesno("Chạy kiểm thử trong dự án",
+                                   "Lệnh: " + display + "\nThư mục: " + str(root) +
+                                   "\n\nKiểm thử sẽ chạy code trong dự án. Bạn đồng ý chạy?"):
+            return
+        self.status_var.set("Đang chạy kiểm thử…")
+
+        def run():
+            try:
+                result = subprocess.run(args, cwd=root, capture_output=True, text=True,
+                                        encoding="utf-8", errors="replace", timeout=120, shell=False)
+                summary = "Mã thoát: " + str(result.returncode) + "\n\n" + (result.stdout + result.stderr)[-20000:]
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                summary = "Không chạy được: " + str(exc)
+
+            def show():
+                if self.closed:
+                    return
+                self.status_var.set("Đã hoàn tất kiểm thử.")
+                dialog = tk.Toplevel(self)
+                dialog.title("Kết quả kiểm thử")
+                dialog.geometry("820x570")
+                area = tk.Text(dialog, wrap="word", font=("Consolas", 10))
+                area.pack(fill="both", expand=True, padx=12, pady=12)
+                area.insert("1.0", display + "\n\n" + summary)
+                area.configure(state="disabled")
+
+            try:
+                self.after(0, show)
+            except RuntimeError:
+                pass
+
+        threading.Thread(target=run, daemon=True).start()
 
     def _show_memories(self):
         dialog = tk.Toplevel(self)
@@ -497,6 +577,8 @@ class MiraApp(tk.Tk):
                 models, error = [], str(exc)
 
             def update():
+                if self.closed:
+                    return
                 self.available_models = models
                 if on_done:
                     on_done(models)
@@ -513,7 +595,10 @@ class MiraApp(tk.Tk):
                     self.health_var.set(f"●  Ollama sẵn sàng • {self.model_var.get()}")
                     self.health_label.configure(fg=ACCENT)
 
-            self.after(0, update)
+            try:
+                self.after(0, update)
+            except RuntimeError:
+                pass
 
         threading.Thread(target=run, daemon=True).start()
 
@@ -555,9 +640,13 @@ class MiraApp(tk.Tk):
 
     def _approve_edit(self, path: str, reason: str, diff: str) -> bool:
         done = threading.Event()
+        self.pending_approval = done
         decision = [False]
 
         def show():
+            if self.closed:
+                done.set()
+                return
             dialog = tk.Toplevel(self)
             dialog.title("Duyệt thay đổi • " + path)
             dialog.geometry("880x640")
@@ -596,9 +685,13 @@ class MiraApp(tk.Tk):
             dialog.protocol("WM_DELETE_WINDOW", finish)
             dialog.focus_set()
 
-        self.after(0, show)
+        try:
+            self.after(0, show)
+        except RuntimeError:
+            return False
         done.wait()
-        return decision[0]
+        self.pending_approval = None
+        return decision[0] and not self.closed
 
     def _send(self, event=None):
         if not self.busy:
@@ -676,7 +769,11 @@ class MiraApp(tk.Tk):
         self.after(90, pump)
 
         def report(action):
-            self.after(0, self.status_var.set, action)
+            if not self.closed:
+                try:
+                    self.after(0, self.status_var.set, action)
+                except RuntimeError:
+                    pass
 
         def run():
             try:
@@ -715,7 +812,10 @@ class MiraApp(tk.Tk):
                 self.send_button.configure(state="normal")
                 self.input.focus_set()
 
-            self.after(0, complete)
+            try:
+                self.after(0, complete)
+            except RuntimeError:
+                pass
 
         threading.Thread(target=run, daemon=True).start()
 
