@@ -30,8 +30,11 @@ class MiraApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Mira — trợ lý cá nhân")
-        self.geometry("1120x750")
-        self.minsize(820, 560)
+        screen_width, screen_height = self.winfo_screenwidth(), self.winfo_screenheight()
+        width = min(1120, max(720, screen_width - 80))
+        height = min(750, max(440, screen_height - 90))
+        self.geometry(f"{width}x{height}")
+        self.minsize(700, 430)
         self.configure(bg=BG)
         self.path = data_dir()
         self.settings_path = self.path / "settings.json"
@@ -138,7 +141,6 @@ class MiraApp(tk.Tk):
         self._button(project, "Chọn thư mục", self._choose_folder).pack(side="right", padx=(8, 0))
 
         chat_box = tk.Frame(main, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        chat_box.pack(fill="both", expand=True)
         self.output = tk.Text(chat_box, wrap="word", state="disabled", bg=PANEL, fg=TEXT,
                               insertbackground=TEXT, relief="flat", padx=18, pady=18,
                               font=("Segoe UI", 11), spacing3=10, borderwidth=0)
@@ -151,14 +153,12 @@ class MiraApp(tk.Tk):
         self.output.tag_configure("hint", foreground=MUTED, font=("Segoe UI", 11))
 
         shortcuts = tk.Frame(main, bg=BG)
-        shortcuts.pack(fill="x", pady=(10, 8))
         self._button(shortcuts, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 7))
         self._button(shortcuts, "▶ Chạy kiểm thử", self._run_tests).pack(side="left", padx=(0, 7))
         self._button(shortcuts, "Gợi ý hỏi", self._suggest).pack(side="left")
 
         composer = tk.Frame(main, bg=INPUT, highlightbackground=ACCENT, highlightthickness=2,
                             padx=12, pady=9)
-        composer.pack(fill="x")
         self._label(composer, "NHẬP TIN NHẮN CHO MIRA", 9, ACCENT, True, INPUT).pack(anchor="w")
         input_row = tk.Frame(composer, bg=INPUT)
         input_row.pack(fill="x", pady=(5, 0))
@@ -170,10 +170,15 @@ class MiraApp(tk.Tk):
         self.input.bind("<Control-Return>", self._send)
         self.send_button = self._button(input_row, "Gửi  ➤", self._send, True)
         self.send_button.pack(side="right", padx=(12, 0), anchor="se")
-        self._label(main, "Enter để gửi  ·  Shift+Enter để xuống dòng",
-                    9, MUTED).pack(anchor="w", pady=(7, 0))
+        self.hint_label = self._label(main, "Enter để gửi  ·  Shift+Enter để xuống dòng", 9, MUTED)
         self.status_label = self._label(main, "", 9, MUTED, textvariable=self.status_var)
-        self.status_label.pack(anchor="w", pady=(3, 0))
+        # Reserve bottom space first. The chat transcript shrinks on small displays;
+        # the composer and Send button must always remain visible.
+        self.status_label.pack(side="bottom", anchor="w", pady=(3, 0))
+        self.hint_label.pack(side="bottom", anchor="w", pady=(7, 0))
+        composer.pack(side="bottom", fill="x")
+        shortcuts.pack(side="bottom", fill="x", pady=(8, 5))
+        chat_box.pack(fill="both", expand=True)
         self.input.focus_set()
 
     def _on_enter(self, event):

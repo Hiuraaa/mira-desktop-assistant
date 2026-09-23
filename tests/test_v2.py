@@ -61,7 +61,7 @@ class VisibleComposerTests(unittest.TestCase):
                 with patch.dict(os.environ, {"MIRA_DATA_DIR": folder}):
                     app = MiraApp()
                     try:
-                        app.geometry("900x600")
+                        app.geometry("900x520")
                         app.update()
                         self.assertTrue(app.input.winfo_ismapped())
                         self.assertTrue(app.send_button.winfo_ismapped())
@@ -72,7 +72,9 @@ class VisibleComposerTests(unittest.TestCase):
                     finally:
                         app._close()
         except tk.TclError as exc:
-            self.skipTest("Môi trường không có màn hình Tkinter: " + str(exc))
+            if "display" in str(exc).lower() or "screen" in str(exc).lower():
+                self.skipTest("Môi trường không có màn hình Tkinter: " + str(exc))
+            raise
 
 
 if __name__ == "__main__":
