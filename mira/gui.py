@@ -1,40 +1,40 @@
-"""Mira desktop interface: chat first, with explicit file and model controls."""
+"""Mira's desktop chat window. Tk is only touched from its main thread."""
 
 from __future__ import annotations
 
+import threading
+import queue
 import shutil
 import subprocess
 import sys
-import threading
+import time
 import tkinter as tk
+import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .agent import Agent
+from .preferences import PreferenceStore
+from .preferences_ui import open_preference_dialog
 from .storage import ConversationStore, MemoryStore, data_dir, load_json, save_json
 from .workspace import Workspace, WorkspaceError
 
 
-BG = "#0b1422"
-SIDE = "#101f31"
-PANEL = "#172a40"
-INPUT = "#203852"
-BORDER = "#38556d"
-TEXT = "#f2f7ff"
-MUTED = "#b4c7d9"
-ACCENT = "#83edcf"
-RED = "#ffadad"
+BG = "#0c1422"
+SIDE = "#142136"
+PANEL = "#1b2b42"
+TEXT = "#f5f8fd"
+MUTED = "#acc1d4"
+ACCENT = "#6ce0c5"
+INK = "#152337"
 
 
 class MiraApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Mira — trợ lý cá nhân")
-        screen_width, screen_height = self.winfo_screenwidth(), self.winfo_screenheight()
-        width = min(1120, max(720, screen_width - 80))
-        height = min(750, max(440, screen_height - 90))
-        self.geometry(f"{width}x{height}")
-        self.minsize(700, 430)
+        self.title("Mira • trợ lý cá nhân")
+        self.geometry("1160x760")
+        self.minsize(860, 610)
         self.configure(bg=BG)
         self.path = data_dir()
         self.settings_path = self.path / "settings.json"
@@ -42,463 +42,341 @@ class MiraApp(tk.Tk):
         if not isinstance(settings, dict):
             raise ValueError("Cài đặt Mira không đúng định dạng.")
         self.memories = MemoryStore(self.path / "memories.json")
-        self.chats = ConversationStore(self.path / "conversations.json",
-                                       self.path / "conversation.json")
+        self.preferences = PreferenceStore(self.path / "preferences.json")
+        self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
         self.agent = Agent()
         self.busy = False
         self.closed = False
-        self.pending_edit = None
-        self.installed_models = []
-        self.name_var = tk.StringVar(value=settings.get("name", "Mira"))
-        self.model_var = tk.StringVar(value=settings.get("model", "qwen3:4b"))
-        self.folder_var = tk.StringVar(value="Chưa chọn thư mục")
-        self.status_var = tk.StringVar(value="Đang kiểm tra Ollama…")
-        self.workspace = None
+        self.pending_approval: threading.Event | None = None
+        self.retry_text: str | None = None
+        self.retry_chat_id: str | None = None
+        self.retry_image: bytes | None = None
+        self.retry_image_name: str | None = None
+        self.attachment_data: bytes | None = None
+        self.attachment_name: str | None = None
+        self.attachment_var = tk.StringVar(value="Chưa đính kèm ảnh")
+        self.available_models: list[str] = []
+        self.name_var = tk.StringVar(value=settings.get("name") or "Mira")
+        self.model_var = tk.StringVar(value=settings.get("model") or "qwen3:4b")
+        self.fast_var = tk.BooleanVar(value=settings.get("fast_mode", True))
+        self.stream_chat_id: str | None = None
+        self.stream_text = ""
+        self.folder_var = tk.StringVar(value="Chưa chọn thư mục • Mira chỉ trò chuyện")
+        self.health_var = tk.StringVar(value="Đang kiểm tra Ollama…")
+        self.status_var = tk.StringVar(value="Sẵn sàng • Enter để gửi, Shift+Enter để xuống dòng")
+        self.title_var = tk.StringVar(value="Cuộc trò chuyện")
+        self.workspace: Workspace | None = None
         try:
             if settings.get("folder"):
-                self.workspace = Workspace(Path(settings["folder"]),
-                                           self.path / "backups")
+                self.workspace = Workspace(Path(settings["folder"]), self.path / "backups")
                 self.folder_var.set(str(self.workspace.root))
         except (OSError, WorkspaceError):
-            self.folder_var.set("Thư mục cũ không còn tồn tại. Hãy chọn lại.")
-        self.current_id = settings.get("current_chat")
-        if self.chats.get(self.current_id) is None:
-            existing = self.chats.list()
-            self.current_id = existing[0]["id"] if existing else self.chats.create()
+            self.folder_var.set("Thư mục cũ không còn tồn tại • hãy chọn lại")
+
+        if not self.chats.items:
+            self.active_chat_id = self.chats.new()["id"]
+        else:
+            selected = settings.get("active_chat_id") or settings.get("current_chat")
+            ids = {item["id"] for item in self.chats.items}
+            self.active_chat_id = selected if selected in ids else self.chats.items[0]["id"]
+
         self._build()
-        self._refresh_history()
+        self._refresh_chat_list()
         self._render_chat()
-        self._check_model()
         self.protocol("WM_DELETE_WINDOW", self._close)
+        self.after(200, self._check_ollama)
 
-    def _button(self, parent, label, command, primary=False):
-        return tk.Button(
-            parent, text=label, command=command, relief="flat",
-            bg=ACCENT if primary else PANEL, fg=BG if primary else TEXT,
-            activebackground="#b4ffe5" if primary else INPUT,
-            activeforeground=BG if primary else TEXT,
-            font=("Segoe UI", 10, "bold" if primary else "normal"),
-            padx=12, pady=8, cursor="hand2", borderwidth=0,
-        )
-
-    def _label(self, parent, text, size=10, color=TEXT, bold=False, bg=BG, **kwargs):
-        return tk.Label(parent, text=text, bg=bg, fg=color,
-                        font=("Segoe UI", size, "bold" if bold else "normal"), **kwargs)
+    def _button(self, parent, label, command, *, primary=False, subtle=False):
+        return tk.Button(parent, text=label, command=command, relief="flat", cursor="hand2",
+                         bg=ACCENT if primary else (SIDE if subtle else PANEL),
+                         fg=INK if primary else TEXT, activebackground="#a4f0dc" if primary else "#304967",
+                         activeforeground=INK if primary else TEXT, font=("Segoe UI", 10, "bold"),
+                         padx=13, pady=9, borderwidth=0, takefocus=True)
 
     def _build(self):
-        self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=1)
-        sidebar = tk.Frame(self, bg=SIDE, width=260, padx=18, pady=18)
-        sidebar.grid(row=0, column=0, sticky="nsew")
+        self.grid_rowconfigure(0, weight=1)
+        sidebar = tk.Frame(self, bg=SIDE, width=252, padx=14, pady=16)
+        sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
-        self._label(sidebar, "✦  MIRA", 21, ACCENT, True, SIDE).pack(anchor="w")
-        self._label(sidebar, "Trợ lý cá nhân của bạn", 10, MUTED, bg=SIDE).pack(anchor="w", pady=(0, 22))
-        self.new_button = self._button(sidebar, "＋  Cuộc trò chuyện mới", self._new_chat, True)
-        self.new_button.pack(fill="x")
-        self._label(sidebar, "LỊCH SỬ TRÒ CHUYỆN", 9, MUTED, True, SIDE).pack(anchor="w", pady=(24, 8))
-        history_frame = tk.Frame(sidebar, bg=SIDE)
-        history_frame.pack(fill="both", expand=True)
-        self.history = tk.Listbox(history_frame, bg=SIDE, fg=TEXT, selectbackground=INPUT,
-                                  selectforeground=ACCENT, relief="flat", highlightthickness=0,
-                                  activestyle="none", font=("Segoe UI", 10),
-                                  borderwidth=0, exportselection=False)
-        bar = tk.Scrollbar(history_frame, command=self.history.yview)
-        self.history.configure(yscrollcommand=bar.set)
-        self.history.pack(side="left", fill="both", expand=True)
-        bar.pack(side="right", fill="y")
-        self.history.bind("<<ListboxSelect>>", self._select_chat)
-        row = tk.Frame(sidebar, bg=SIDE)
-        row.pack(fill="x", pady=(8, 18))
-        self._button(row, "Đổi tên", self._rename_chat).pack(side="left", fill="x", expand=True, padx=(0, 5))
-        self._button(row, "Xóa chat", self._delete_chat).pack(side="left", fill="x", expand=True)
-        self._button(sidebar, "🧠  Bộ nhớ của Mira", self._memory_manager).pack(fill="x", pady=4)
-        self._button(sidebar, "⚙  Mô hình & cài đặt", self._settings).pack(fill="x", pady=4)
-        self._button(sidebar, "?  Hướng dẫn nhanh", self._help).pack(fill="x", pady=4)
-        self._label(sidebar, "Dữ liệu chat và bộ nhớ lưu trên máy.",
-                    9, MUTED, bg=SIDE, wraplength=220, justify="left").pack(anchor="w", pady=(18, 0))
+        sidebar.grid_columnconfigure(0, weight=1)
+        sidebar.grid_rowconfigure(3, weight=1)
+        tk.Label(sidebar, text="✦  Mira", bg=SIDE, fg=ACCENT,
+                 font=("Segoe UI", 23, "bold"), anchor="w").grid(row=0, column=0, sticky="ew")
+        tk.Label(sidebar, text="Trợ lý trên máy tính của bạn", bg=SIDE, fg=MUTED,
+                 font=("Segoe UI", 10), anchor="w").grid(row=1, column=0, sticky="ew", pady=(0, 24))
+        self._button(sidebar, "+  Cuộc trò chuyện mới", self._new_chat, primary=True).grid(
+            row=2, column=0, sticky="ew", pady=(0, 17))
+        archive = tk.Frame(sidebar, bg=SIDE)
+        archive.grid(row=3, column=0, sticky="nsew")
+        archive.grid_columnconfigure(0, weight=1)
+        archive.grid_rowconfigure(1, weight=1)
+        tk.Label(archive, text="LỊCH SỬ TRÒ CHUYỆN", bg=SIDE, fg=MUTED,
+                 font=("Segoe UI", 9, "bold"), anchor="w").grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.chat_list = tk.Listbox(archive, selectmode="browse", activestyle="none", relief="flat",
+                                    bg=SIDE, fg=TEXT, selectbackground="#325976", selectforeground=TEXT,
+                                    font=("Segoe UI", 11), highlightthickness=0, borderwidth=0)
+        self.chat_list.grid(row=1, column=0, sticky="nsew")
+        self.chat_list.bind("<<ListboxSelect>>", self._select_chat)
+        actions = tk.Frame(sidebar, bg=SIDE)
+        actions.grid(row=4, column=0, sticky="ew", pady=(13, 11))
+        self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
+        self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
+        self._button(sidebar, "📁  Chọn thư mục làm việc", self._choose_folder, subtle=True).grid(
+            row=5, column=0, sticky="ew", pady=3)
+        self._button(sidebar, "✦  Dạy Mira / bộ nhớ", self._show_memories, subtle=True).grid(
+            row=6, column=0, sticky="ew", pady=3)
+        self._button(sidebar, "⚙  Mô hình & cài đặt", self._settings_dialog, subtle=True).grid(
+            row=7, column=0, sticky="ew", pady=3)
+        self._button(sidebar, "↥  Xuất cuộc trò chuyện", self._export_chat, subtle=True).grid(
+            row=8, column=0, sticky="ew", pady=(3, 0))
 
-        main = tk.Frame(self, bg=BG, padx=24, pady=18)
+        main = tk.Frame(self, bg=BG, padx=23, pady=16)
         main.grid(row=0, column=1, sticky="nsew")
-        header = tk.Frame(main, bg=BG)
-        header.pack(fill="x")
-        self._label(header, "Trò chuyện với Mira", 19, TEXT, True).pack(side="left")
-        self._button(header, "Xuất chat", self._export_chat).pack(side="right")
-        self._label(main, "Hỏi bất cứ điều gì, nhờ giải thích code hoặc yêu cầu sửa file.",
-                    10, MUTED).pack(anchor="w", pady=(2, 11))
-        model_row = tk.Frame(main, bg=BG)
-        model_row.pack(fill="x", pady=(0, 10))
-        self.model_status = self._label(model_row, "", 10, MUTED)
-        self.model_status.pack(side="left")
-        self._button(model_row, "Kiểm tra lại", self._check_model).pack(side="right")
+        main.grid_columnconfigure(0, weight=1)
+        main.grid_rowconfigure(4, weight=1)
+        head = tk.Frame(main, bg=BG)
+        head.grid(row=0, column=0, sticky="ew")
+        tk.Label(head, textvariable=self.title_var, bg=BG, fg=TEXT,
+                 font=("Segoe UI", 19, "bold"), anchor="w").pack(fill="x")
+        tk.Label(head, textvariable=self.folder_var, bg=BG, fg=MUTED,
+                 font=("Segoe UI", 10), anchor="w", wraplength=570).pack(fill="x", pady=(2, 12))
 
-        project = tk.Frame(main, bg=PANEL, padx=13, pady=10)
-        project.pack(fill="x", pady=(0, 12))
-        left = tk.Frame(project, bg=PANEL)
-        left.pack(side="left", fill="x", expand=True)
-        self._label(left, "THƯ MỤC MIRA ĐƯỢC PHÉP DÙNG", 9, ACCENT, True, PANEL).pack(anchor="w")
-        self._label(left, "", 9, MUTED, bg=PANEL, textvariable=self.folder_var,
-                    anchor="w").pack(anchor="w", fill="x")
-        self._button(project, "Chọn thư mục", self._choose_folder).pack(side="right", padx=(8, 0))
+        health = tk.Frame(main, bg=PANEL, padx=13, pady=7)
+        health.grid(row=1, column=0, sticky="ew", pady=(0, 11))
+        self.health_label = tk.Label(health, textvariable=self.health_var, bg=PANEL, fg=ACCENT,
+                                     anchor="w", font=("Segoe UI", 10, "bold"))
+        self.health_label.pack(side="left", fill="x", expand=True)
+        self._button(health, "Kiểm tra lại", self._check_ollama).pack(side="right", padx=(8, 0))
+        self._button(health, "Cách cài", self._setup_guide).pack(side="right")
 
-        chat_box = tk.Frame(main, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
-        self.output = tk.Text(chat_box, wrap="word", state="disabled", bg=PANEL, fg=TEXT,
-                              insertbackground=TEXT, relief="flat", padx=18, pady=18,
-                              font=("Segoe UI", 11), spacing3=10, borderwidth=0)
-        scroll = tk.Scrollbar(chat_box, command=self.output.yview)
+        project_actions = tk.Frame(main, bg=BG)
+        project_actions.grid(row=2, column=0, sticky="ew", pady=(0, 8))
+        self._button(project_actions, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 8))
+        self._button(project_actions, "▶ Chạy kiểm thử", self._run_tests).pack(side="left")
+
+        self.starters = tk.Frame(main, bg=BG)
+        self.starters.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        for label, prompt in (
+            ("Giải thích lỗi code", "Giúp tôi hiểu và sửa lỗi code này: "),
+            ("Tìm trong dự án", "Tìm trong thư mục đã chọn nơi xử lý: "),
+            ("Kiểm tra Python", "Kiểm tra cú pháp file Python này: "),
+            ("Lên kế hoạch", "Giúp tôi chia việc này thành các bước cụ thể: "),
+        ):
+            self._button(self.starters, label, lambda p=prompt: self._fill_prompt(p)).pack(
+                side="left", padx=(0, 8))
+
+        conversation = tk.Frame(main, bg=PANEL)
+        conversation.grid(row=4, column=0, sticky="nsew")
+        conversation.grid_columnconfigure(0, weight=1)
+        conversation.grid_rowconfigure(0, weight=1)
+        self.output = tk.Text(conversation, wrap="word", state="disabled", bg=PANEL, fg=TEXT,
+                              insertbackground=TEXT, relief="flat", padx=22, pady=20,
+                              font=("Segoe UI", 11), spacing1=3, spacing3=12, cursor="arrow")
+        self.output.grid(row=0, column=0, sticky="nsew")
+        scroll = tk.Scrollbar(conversation, command=self.output.yview)
+        scroll.grid(row=0, column=1, sticky="ns")
         self.output.configure(yscrollcommand=scroll.set)
-        self.output.pack(side="left", fill="both", expand=True)
-        scroll.pack(side="right", fill="y")
-        self.output.tag_configure("sender", foreground=ACCENT, font=("Segoe UI", 11, "bold"))
-        self.output.tag_configure("welcome", foreground=TEXT, font=("Segoe UI", 17, "bold"))
-        self.output.tag_configure("hint", foreground=MUTED, font=("Segoe UI", 11))
+        self.output.tag_configure("mira", foreground=ACCENT, font=("Segoe UI", 11, "bold"))
+        self.output.tag_configure("you", foreground="#a9caff", font=("Segoe UI", 11, "bold"))
 
-        shortcuts = tk.Frame(main, bg=BG)
-        self._button(shortcuts, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 7))
-        self._button(shortcuts, "▶ Chạy kiểm thử", self._run_tests).pack(side="left", padx=(0, 7))
-        self._button(shortcuts, "Gợi ý hỏi", self._suggest).pack(side="left")
-
-        composer = tk.Frame(main, bg=INPUT, highlightbackground=ACCENT, highlightthickness=2,
-                            padx=12, pady=9)
-        self._label(composer, "NHẬP TIN NHẮN CHO MIRA", 9, ACCENT, True, INPUT).pack(anchor="w")
-        input_row = tk.Frame(composer, bg=INPUT)
-        input_row.pack(fill="x", pady=(5, 0))
-        input_row.grid_columnconfigure(0, weight=1)
-        self.input = tk.Text(input_row, height=3, width=1, wrap="word", bg=INPUT, fg=TEXT,
-                             insertbackground=TEXT, relief="flat", borderwidth=0,
-                             font=("Segoe UI", 12), undo=True)
-        self.input.grid(row=0, column=0, sticky="ew")
-        self.input.bind("<Return>", self._on_enter)
+        composer = tk.Frame(main, bg=BG, pady=14)
+        composer.grid(row=5, column=0, sticky="ew")
+        composer.grid_columnconfigure(0, weight=1)
+        tk.Label(composer, text="NHẮN MIRA", bg=BG, fg=ACCENT, anchor="w",
+                 font=("Segoe UI", 11, "bold")).grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        self.input = tk.Text(composer, height=4, wrap="word", bg="#f7fbff", fg=INK,
+                             insertbackground=INK, relief="flat", highlightthickness=2,
+                             highlightbackground=ACCENT, highlightcolor=ACCENT,
+                             padx=14, pady=10, font=("Segoe UI", 12), undo=True)
+        self.input.grid(row=1, column=0, sticky="ew")
+        self.input.bind("<Return>", self._send)
         self.input.bind("<Control-Return>", self._send)
-        self.send_button = self._button(input_row, "Gửi  ➤", self._send, True)
-        self.send_button.grid(row=0, column=1, sticky="se", padx=(12, 0))
-        self.hint_label = self._label(main, "Enter để gửi  ·  Shift+Enter để xuống dòng", 9, MUTED)
-        self.status_label = self._label(main, "", 9, MUTED, textvariable=self.status_var)
-        # Reserve bottom space first. The chat transcript shrinks on small displays;
-        # the composer and Send button must always remain visible.
-        self.status_label.pack(side="bottom", anchor="w", pady=(3, 0))
-        self.hint_label.pack(side="bottom", anchor="w", pady=(7, 0))
-        composer.pack(side="bottom", fill="x")
-        shortcuts.pack(side="bottom", fill="x", pady=(8, 5))
-        chat_box.pack(fill="both", expand=True)
+        self.input.bind("<Shift-Return>", self._newline)
+        self.send_button = self._button(composer, "Gửi  ↗", self._send, primary=True)
+        self.send_button.grid(row=1, column=1, sticky="ns", padx=(10, 0))
+        tk.Label(composer, text="Nhập câu hỏi hoặc yêu cầu sửa file • Enter gửi • Shift+Enter xuống dòng",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 9), anchor="w").grid(
+                     row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        attachment = tk.Frame(composer, bg=BG)
+        attachment.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(5, 0))
+        self._button(attachment, "＋ Đính kèm ảnh", self._attach_image).pack(side="left")
+        tk.Label(attachment, textvariable=self.attachment_var, bg=BG, fg=MUTED,
+                 font=("Segoe UI", 9), width=30, anchor="w").pack(side="left", padx=8)
+        self._button(attachment, "Bỏ ảnh", self._clear_image).pack(side="right")
+        status = tk.Frame(main, bg=BG)
+        status.grid(row=6, column=0, sticky="ew")
+        tk.Label(status, textvariable=self.status_var, bg=BG, fg=MUTED,
+                 anchor="w", font=("Segoe UI", 9)).pack(side="left", fill="x", expand=True)
+        self.retry_button = self._button(status, "Thử gửi lại", self._retry)
         self.input.focus_set()
-
-    def _on_enter(self, event):
-        if event.state & 0x0001:  # Shift+Enter: normal newline
-            return None
-        return self._send()
 
     def _save_settings(self):
         save_json(self.settings_path, {
             "name": self.name_var.get().strip()[:40] or "Mira",
             "model": self.model_var.get().strip(),
+            "fast_mode": self.fast_var.get(),
             "folder": str(self.workspace.root) if self.workspace else "",
-            "current_chat": self.current_id,
+            "active_chat_id": self.active_chat_id,
+            "current_chat": self.active_chat_id,
         })
 
-    def _refresh_history(self):
-        self.history_ids = [item["id"] for item in self.chats.list()]
-        self.history.delete(0, "end")
-        for item in self.chats.list():
-            self.history.insert("end", "  " + item.get("title", "Cuộc trò chuyện"))
-        if self.current_id in self.history_ids:
-            index = self.history_ids.index(self.current_id)
-            self.history.selection_set(index)
-            self.history.see(index)
-
-    def _select_chat(self, event=None):
-        selection = self.history.curselection()
-        if not selection or self.busy:
-            return
-        chat_id = self.history_ids[selection[0]]
-        if chat_id != self.current_id:
-            self.current_id = chat_id
+    def _close(self):
+        self.closed = True
+        if self.pending_approval:
+            self.pending_approval.set()
+        try:
             self._save_settings()
-            self._render_chat()
+        except OSError:
+            pass
+        self.destroy()
+
+    def _refresh_chat_list(self):
+        self.chat_list.delete(0, "end")
+        for item in self.chats.items:
+            self.chat_list.insert("end", "  " + item.get("title", "Cuộc trò chuyện"))
+        for index, item in enumerate(self.chats.items):
+            if item["id"] == self.active_chat_id:
+                self.chat_list.selection_set(index)
+                self.chat_list.see(index)
+                break
 
     def _render_chat(self):
+        item = self.chats.get(self.active_chat_id)
+        self.title_var.set(item.get("title", "Cuộc trò chuyện"))
         self.output.configure(state="normal")
         self.output.delete("1.0", "end")
-        messages = self.chats.messages(self.current_id)
-        if messages:
-            for message in messages:
-                self._insert_message("Bạn" if message["role"] == "user"
-                                     else self.name_var.get().strip() or "Mira",
-                                     message["content"])
+        self.output.configure(state="disabled")
+        for message in item["messages"]:
+            self._add_message("Bạn" if message["role"] == "user" else self.name_var.get(),
+                              message["content"], user=message["role"] == "user")
+        if not item["messages"]:
+            self._add_message(self.name_var.get(),
+                              "Chào bạn! Bạn có thể nhắn cho mình ngay ở ô sáng phía dưới. "
+                              "Nếu muốn mình xem hoặc sửa code, hãy chọn thư mục làm việc trước.")
+            self.starters.grid()
         else:
-            self.output.insert("end", "Xin chào, mình là Mira ✦\n\n", "welcome")
-            self.output.insert("end",
-                "Ô chat của bạn nằm ngay bên dưới. Hãy thử hỏi một câu, hoặc chọn thư mục "
-                "để mình giúp đọc và sửa file.\n\n"
-                "Ví dụ: “Giải thích đoạn code này”, “Tìm lỗi trong dự án”, "
-                "“Lập kế hoạch học tiếng Anh cho tôi”.", "hint")
-        self.output.configure(state="disabled")
-        self.output.see("end")
+            self.starters.grid_remove()
+        if self.busy and self.stream_chat_id == self.active_chat_id and self.stream_text:
+            self._show_pending(self.name_var.get())
 
-    def _insert_message(self, sender, content):
-        self.output.insert("end", sender + "\n", "sender")
-        self.output.insert("end", content + "\n\n")
-
-    def _add_message(self, sender, content):
+    def _add_message(self, sender: str, content: str, *, user=False):
         self.output.configure(state="normal")
-        if not self.chats.messages(self.current_id)[:-1] and sender == "Bạn":
-            self.output.delete("1.0", "end")
-        self._insert_message(sender, content)
+        self.output.insert("end", sender + "\n", "you" if user else "mira")
+        self.output.insert("end", content + "\n\n")
         self.output.configure(state="disabled")
         self.output.see("end")
+
+    def _remove_pending(self):
+        ranges = self.output.tag_ranges("pending")
+        if ranges:
+            self.output.configure(state="normal")
+            self.output.delete(ranges[0], ranges[-1])
+            self.output.configure(state="disabled")
+
+    def _show_pending(self, name: str):
+        self._remove_pending()
+        self.output.configure(state="normal")
+        self.output.insert("end", name + "\n", ("mira", "pending"))
+        self.output.insert("end", (self.stream_text or "Đang chuẩn bị câu trả lời…") + "\n\n", "pending")
+        self.output.configure(state="disabled")
+        self.output.see("end")
+
+    def _select_chat(self, event=None):
+        selected = self.chat_list.curselection()
+        if selected and selected[0] < len(self.chats.items):
+            selected_id = self.chats.items[selected[0]]["id"]
+            if selected_id != self.active_chat_id:
+                self.active_chat_id = selected_id
+                self._render_chat()
+                if self.retry_text and self.retry_chat_id == selected_id:
+                    self.retry_button.pack(side="right")
+                else:
+                    self.retry_button.pack_forget()
+                self._save_settings()
 
     def _new_chat(self):
-        if self.busy:
-            return
         try:
-            self.current_id = self.chats.create()
+            self.active_chat_id = self.chats.new()["id"]
+            self.retry_button.pack_forget()
+            self._refresh_chat_list()
+            self._render_chat()
             self._save_settings()
+            self.input.focus_set()
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Không tạo được chat", str(exc))
-            return
-        self._refresh_history()
-        self._render_chat()
-        self.input.focus_set()
+            messagebox.showerror("Không tạo được cuộc trò chuyện", str(exc))
 
     def _rename_chat(self):
-        chat = self.chats.get(self.current_id)
-        if not chat:
-            return
-        title = simpledialog.askstring("Đổi tên", "Tên cuộc trò chuyện:", parent=self,
-                                       initialvalue=chat["title"])
+        item = self.chats.get(self.active_chat_id)
+        title = simpledialog.askstring("Đổi tên", "Tên cuộc trò chuyện:", initialvalue=item["title"], parent=self)
         if title is not None:
             try:
-                self.chats.rename(self.current_id, title)
-                self._refresh_history()
+                self.chats.rename(self.active_chat_id, title)
+                self._refresh_chat_list()
+                self._render_chat()
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Không đổi được tên", str(exc))
 
     def _delete_chat(self):
-        if self.busy or not messagebox.askyesno("Xóa cuộc trò chuyện",
-                                                 "Xóa cuộc trò chuyện đang chọn? Bộ nhớ Mira vẫn được giữ."):
+        if self.busy:
+            messagebox.showinfo("Đang trả lời", "Hãy đợi Mira trả lời xong trước khi xóa cuộc trò chuyện.")
+            return
+        if not messagebox.askyesno("Xóa cuộc trò chuyện", "Xóa cuộc trò chuyện này khỏi máy?", parent=self):
             return
         try:
-            self.chats.delete(self.current_id)
-            remaining = self.chats.list()
-            self.current_id = remaining[0]["id"] if remaining else self.chats.create()
+            self.chats.delete(self.active_chat_id)
+            self.active_chat_id = (self.chats.items[0] if self.chats.items else self.chats.new())["id"]
+            self._refresh_chat_list()
+            self._render_chat()
             self._save_settings()
         except (OSError, ValueError) as exc:
-            messagebox.showerror("Không xóa được chat", str(exc))
-            return
-        self._refresh_history()
-        self._render_chat()
+            messagebox.showerror("Không xóa được", str(exc))
 
-    def _memory_manager(self):
-        dialog = tk.Toplevel(self)
-        dialog.title("Bộ nhớ cá nhân của Mira")
-        dialog.geometry("650x460")
-        dialog.transient(self)
-        self._label(dialog, "Những điều bạn đã dạy Mira", 15, TEXT, True, SIDE).pack(fill="x")
-        tk.Label(dialog, text="Mira dùng những điều này khi trả lời. Đây là bộ nhớ, chưa phải huấn luyện lại mô hình.",
-                 anchor="w", wraplength=600, justify="left").pack(fill="x", padx=12, pady=10)
-        box = tk.Listbox(dialog, font=("Segoe UI", 11))
-        box.pack(fill="both", expand=True, padx=12)
-        ids = []
-
-        def refresh():
-            box.delete(0, "end")
-            ids.clear()
-            for item in self.memories.items:
-                box.insert("end", item["text"])
-                ids.append(item["id"])
-
-        def selected_id():
-            selected = box.curselection()
-            return ids[selected[0]] if selected else None
-
-        def add():
-            value = simpledialog.askstring("Dạy Mira", "Điều bạn muốn Mira ghi nhớ:", parent=dialog)
-            if value is not None:
-                try:
-                    self.memories.add(value)
-                    refresh()
-                except (OSError, ValueError) as exc:
-                    messagebox.showerror("Không lưu được", str(exc), parent=dialog)
-
-        def edit():
-            item_id = selected_id()
-            if item_id:
-                current = next(item["text"] for item in self.memories.items if item["id"] == item_id)
-                value = simpledialog.askstring("Sửa bộ nhớ", "Nội dung mới:", parent=dialog,
-                                               initialvalue=current)
-                if value is not None:
-                    try:
-                        self.memories.update(item_id, value)
-                        refresh()
-                    except (OSError, ValueError) as exc:
-                        messagebox.showerror("Không sửa được", str(exc), parent=dialog)
-
-        def forget():
-            item_id = selected_id()
-            if item_id and messagebox.askyesno("Quên điều này?", "Xóa mục đã chọn khỏi bộ nhớ?", parent=dialog):
-                try:
-                    self.memories.forget(item_id)
-                    refresh()
-                except (OSError, ValueError) as exc:
-                    messagebox.showerror("Không xóa được", str(exc), parent=dialog)
-
-        actions = tk.Frame(dialog)
-        actions.pack(pady=12)
-        ttk.Button(actions, text="＋ Dạy điều mới", command=add).pack(side="left", padx=5)
-        ttk.Button(actions, text="Sửa", command=edit).pack(side="left", padx=5)
-        ttk.Button(actions, text="Quên", command=forget).pack(side="left", padx=5)
-        refresh()
-
-    def _settings(self):
-        dialog = tk.Toplevel(self)
-        dialog.title("Cài đặt Mira")
-        dialog.geometry("500x290")
-        dialog.resizable(False, False)
-        dialog.transient(self)
-        frame = tk.Frame(dialog, padx=18, pady=18)
-        frame.pack(fill="both", expand=True)
-        tk.Label(frame, text="Tên trợ lý").pack(anchor="w")
-        name = ttk.Entry(frame, width=35)
-        name.insert(0, self.name_var.get())
-        name.pack(fill="x", pady=(4, 16))
-        tk.Label(frame, text="Mô hình Ollama").pack(anchor="w")
-        model = ttk.Combobox(frame, values=self.installed_models)
-        model.set(self.model_var.get())
-        model.pack(fill="x", pady=(4, 8))
-        tk.Label(frame, text="Nếu danh sách trống, hãy mở Ollama và tải mô hình qwen3:4b.",
-                 wraplength=440, justify="left").pack(anchor="w")
-
-        def apply():
-            if not model.get().strip():
-                messagebox.showerror("Thiếu mô hình", "Hãy nhập tên mô hình.", parent=dialog)
-                return
-            self.name_var.set(name.get().strip()[:40] or "Mira")
-            self.model_var.set(model.get().strip())
+    def _export_chat(self):
+        item = self.chats.get(self.active_chat_id)
+        filename = filedialog.asksaveasfilename(title="Xuất cuộc trò chuyện", defaultextension=".txt",
+                                                filetypes=[("Văn bản UTF-8", "*.txt")], initialfile="mira-chat.txt")
+        if filename:
             try:
-                self._save_settings()
+                content = "\n\n".join(("Bạn" if m["role"] == "user" else self.name_var.get())
+                                       + ":\n" + m["content"] for m in item["messages"])
+                Path(filename).write_text(content + "\n", encoding="utf-8")
+                self.status_var.set("Đã xuất cuộc trò chuyện.")
             except OSError as exc:
-                messagebox.showerror("Không lưu được cài đặt", str(exc), parent=dialog)
-                return
-            dialog.destroy()
-            self._check_model()
-
-        row = tk.Frame(frame)
-        row.pack(fill="x", pady=18)
-        ttk.Button(row, text="Hướng dẫn cài mô hình", command=self._help).pack(side="left")
-        ttk.Button(row, text="Lưu", command=apply).pack(side="right")
-
-    def _help(self):
-        dialog = tk.Toplevel(self)
-        dialog.title("Bắt đầu với Mira")
-        dialog.geometry("620x370")
-        dialog.transient(self)
-        message = (
-            "1. Cài Python 3.11+ và Ollama cho Windows.\n"
-            "2. Mở Ollama. Trong PowerShell chạy: ollama pull qwen3:4b\n"
-            "3. Nhập câu hỏi ở ô có nhãn NHẬP TIN NHẮN CHO MIRA bên dưới và nhấn Enter.\n"
-            "4. Chọn thư mục để Mira có thể đọc, tìm và đề xuất sửa file.\n"
-            "5. Mỗi lần sửa file bạn sẽ được xem diff và chọn Duyệt hoặc Từ chối.\n"
-            "6. Dùng Bộ nhớ của Mira để dạy sở thích và quy tắc bạn muốn lưu."
-        )
-        tk.Label(dialog, text=message, font=("Segoe UI", 11), wraplength=570,
-                 justify="left", anchor="nw", padx=20, pady=20).pack(fill="both", expand=True)
-
-        def copy_command():
-            self.clipboard_clear()
-            self.clipboard_append("ollama pull qwen3:4b")
-            messagebox.showinfo("Đã sao chép", "Dán lệnh vào PowerShell để tải mô hình.", parent=dialog)
-
-        ttk.Button(dialog, text="Sao chép lệnh tải mô hình", command=copy_command).pack(pady=12)
-
-    def _check_model(self):
-        self.model_status.configure(text="●  Đang kiểm tra Ollama…", fg=MUTED)
-
-        def run():
-            try:
-                models = self.agent.client.list_models()
-                error = None
-            except RuntimeError as exc:
-                models, error = [], str(exc)
-
-            def done():
-                if self.closed:
-                    return
-                self.installed_models = models
-                if error:
-                    self.model_status.configure(text="●  Chưa kết nối Ollama • mở Cài đặt để xem hướng dẫn", fg=RED)
-                    self.status_var.set(error)
-                elif not models:
-                    self.model_status.configure(text="●  Ollama đang chạy • chưa tải mô hình", fg=RED)
-                    self.status_var.set("Tải qwen3:4b để bắt đầu trò chuyện.")
-                elif self.model_var.get() not in models:
-                    self.model_status.configure(text="●  Mô hình đã chọn chưa có trên máy", fg=RED)
-                    self.status_var.set("Chọn một mô hình trong Cài đặt hoặc tải mô hình đã chọn.")
-                else:
-                    self.model_status.configure(text="●  Ollama sẵn sàng  •  " + self.model_var.get(), fg=ACCENT)
-                    self.status_var.set("Sẵn sàng trò chuyện.")
-
-            try:
-                self.after(0, done)
-            except RuntimeError:
-                pass
-
-        threading.Thread(target=run, daemon=True).start()
+                messagebox.showerror("Không xuất được", str(exc))
 
     def _choose_folder(self):
         if self.busy:
+            messagebox.showinfo("Đang trả lời", "Hãy đợi Mira trả lời xong trước khi đổi thư mục.")
             return
-        folder = filedialog.askdirectory(title="Chọn thư mục Mira được phép xem và sửa",
-                                         initialdir=str(self.workspace.root) if self.workspace else None)
+        folder = filedialog.askdirectory(title="Chọn thư mục Mira được phép đọc và đề xuất sửa")
         if folder:
             try:
                 self.workspace = Workspace(Path(folder), self.path / "backups")
                 self.folder_var.set(str(self.workspace.root))
                 self._save_settings()
-                self.status_var.set("Đã chọn thư mục. Giờ bạn có thể nhờ Mira xem hoặc sửa file.")
             except (WorkspaceError, OSError) as exc:
                 messagebox.showerror("Thư mục không hợp lệ", str(exc))
 
     def _attach_file(self):
         if not self.workspace:
-            messagebox.showinfo("Chọn thư mục", "Hãy chọn thư mục trước khi đính kèm file.")
+            messagebox.showinfo("Chọn thư mục", "Hãy chọn thư mục làm việc trước khi chọn file.")
             return
-        path = filedialog.askopenfilename(title="Chọn file trong thư mục đã cho phép",
-                                          initialdir=str(self.workspace.root))
-        if not path:
+        filename = filedialog.askopenfilename(title="Chọn file trong thư mục đã cho phép",
+                                              initialdir=str(self.workspace.root))
+        if not filename:
             return
         try:
-            relative = Path(path).resolve().relative_to(self.workspace.root).as_posix()
+            relative = Path(filename).resolve().relative_to(self.workspace.root).as_posix()
             self.workspace._path(relative)
         except (ValueError, WorkspaceError):
             messagebox.showerror("Ngoài phạm vi", "File phải thuộc thư mục đã chọn và không phải symlink.")
             return
-        prefix = self.input.get("1.0", "end").strip()
+        previous = self.input.get("1.0", "end").strip()
         self.input.delete("1.0", "end")
-        self.input.insert("1.0", (prefix + "\n" if prefix else "") +
+        self.input.insert("1.0", (previous + "\n" if previous else "") +
                           "Hãy đọc file " + relative + " và giúp tôi: ")
         self.input.focus_set()
-
-    def _suggest(self):
-        self.input.delete("1.0", "end")
-        self.input.insert("1.0", "Hãy xem cấu trúc thư mục tôi đã chọn, giải thích dự án và đề xuất bước cải thiện đầu tiên.")
-        self.input.focus_set()
-
-    def _export_chat(self):
-        messages = self.chats.messages(self.current_id)
-        if not messages:
-            messagebox.showinfo("Chưa có tin nhắn", "Cuộc trò chuyện này chưa có nội dung để xuất.")
-            return
-        path = filedialog.asksaveasfilename(title="Xuất cuộc trò chuyện", defaultextension=".md",
-                                            filetypes=[("Markdown", "*.md"), ("Văn bản", "*.txt")])
-        if path:
-            try:
-                name = self.name_var.get().strip() or "Mira"
-                content = "# Cuộc trò chuyện với " + name + "\n\n"
-                content += "\n\n".join("## " + ("Bạn" if m["role"] == "user" else name) +
-                                       "\n\n" + m["content"] for m in messages) + "\n"
-                Path(path).write_text(content, encoding="utf-8")
-                self.status_var.set("Đã xuất cuộc trò chuyện.")
-            except OSError as exc:
-                messagebox.showerror("Không xuất được", str(exc))
 
     def _run_tests(self):
         if self.busy or not self.workspace:
@@ -509,22 +387,20 @@ class MiraApp(tk.Tk):
             args = [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"]
             display = "python -m unittest discover -s tests -v"
         elif (root / "package.json").is_file() and shutil.which("npm"):
-            args = ["npm", "test"]
-            display = "npm test"
+            args, display = ["npm", "test"], "npm test"
         else:
-            messagebox.showinfo("Chưa có bộ kiểm thử", "Mira hỗ trợ dự án có thư mục tests (Python) hoặc package.json (npm).")
+            messagebox.showinfo("Chưa có bộ kiểm thử", "Cần thư mục tests (Python) hoặc package.json (npm).")
             return
         if not messagebox.askyesno("Chạy kiểm thử trong dự án",
                                    "Lệnh: " + display + "\nThư mục: " + str(root) +
-                                   "\n\nKiểm thử sẽ chạy code của dự án. Bạn đồng ý chạy?"):
+                                   "\n\nKiểm thử sẽ chạy code trong dự án. Bạn đồng ý chạy?"):
             return
         self.status_var.set("Đang chạy kiểm thử…")
 
         def run():
             try:
                 result = subprocess.run(args, cwd=root, capture_output=True, text=True,
-                                        encoding="utf-8", errors="replace", timeout=120,
-                                        shell=False)
+                                        encoding="utf-8", errors="replace", timeout=120, shell=False)
                 summary = "Mã thoát: " + str(result.returncode) + "\n\n" + (result.stdout + result.stderr)[-20000:]
             except (OSError, subprocess.TimeoutExpired) as exc:
                 summary = "Không chạy được: " + str(exc)
@@ -548,110 +424,392 @@ class MiraApp(tk.Tk):
 
         threading.Thread(target=run, daemon=True).start()
 
-    def _approve_edit(self, path, reason, diff):
+    def _show_memories(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Bộ nhớ của Mira")
+        dialog.geometry("640x420")
+        dialog.minsize(460, 320)
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Những điều bạn dạy Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 4))
+        tk.Label(dialog, text="Mira dùng các ghi nhớ này khi chat. Bạn có thể thêm hoặc quên từng mục.",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=18)
+        box = tk.Listbox(dialog, font=("Segoe UI", 11), bg=PANEL, fg=TEXT,
+                         selectbackground="#325976", relief="flat", activestyle="none")
+        box.pack(fill="both", expand=True, padx=18, pady=13)
+        ids: list[str] = []
+
+        def reload():
+            box.delete(0, "end")
+            ids.clear()
+            for item in self.memories.items:
+                box.insert("end", item["text"])
+                ids.append(item["id"])
+
+        def teach():
+            value = simpledialog.askstring("Dạy Mira", "Điều bạn muốn mình nhớ cho các lần sau:", parent=dialog)
+            if value is not None:
+                try:
+                    self.memories.add(value)
+                    reload()
+                    self.status_var.set("Mira đã ghi nhớ điều bạn dạy.")
+                except (OSError, ValueError) as exc:
+                    messagebox.showerror("Không ghi nhớ được", str(exc), parent=dialog)
+
+        def forget():
+            selected = box.curselection()
+            if selected:
+                try:
+                    self.memories.forget(ids[selected[0]])
+                    reload()
+                except (OSError, ValueError) as exc:
+                    messagebox.showerror("Không quên được", str(exc), parent=dialog)
+
+        def edit():
+            selected = box.curselection()
+            if selected:
+                value = simpledialog.askstring("Sửa ghi nhớ", "Sửa điều Mira cần nhớ:",
+                                               initialvalue=self.memories.items[selected[0]]["text"], parent=dialog)
+                if value is not None:
+                    try:
+                        self.memories.edit(ids[selected[0]], value)
+                        reload()
+                    except (OSError, ValueError) as exc:
+                        messagebox.showerror("Không sửa được", str(exc), parent=dialog)
+
+        controls = tk.Frame(dialog, bg=BG)
+        controls.pack(fill="x", padx=18, pady=(0, 16))
+        self._button(controls, "+ Dạy Mira", teach, primary=True).pack(side="left")
+        self._button(controls, "Sửa mục", edit).pack(side="left", padx=(8, 0))
+        self._button(controls, "Quên mục đã chọn", forget).pack(side="left", padx=8)
+        self._button(controls, "Bộ sở thích", lambda: open_preference_dialog(self, self.preferences,
+                     self._button)).pack(side="right")
+        reload()
+
+    def _settings_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mô hình & cài đặt")
+        dialog.geometry("560x450")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Thiết lập Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
+        tk.Label(dialog, text="Tên gọi", bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        name = tk.Entry(dialog, font=("Segoe UI", 12), bg="#f7fbff", fg=INK)
+        name.insert(0, self.name_var.get())
+        name.pack(fill="x", padx=20, pady=(3, 12))
+        tk.Label(dialog, text="Mô hình Ollama (đã tải trên máy)", bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        model = ttk.Combobox(dialog, values=self.available_models, font=("Segoe UI", 12))
+        model.set(self.model_var.get())
+        model.pack(fill="x", padx=20, pady=(3, 8))
+        tk.Label(dialog, text="Mặc định: qwen3:4b. Nhấn Kiểm tra lại để xem các mô hình đã cài.",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        tk.Checkbutton(dialog, text="Ưu tiên tốc độ (ngữ cảnh gọn, trả lời hiện dần)",
+                       variable=self.fast_var, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(12, 0))
+        tk.Label(dialog, text="Muốn nhanh hơn nữa: chạy ollama pull qwen3:1.7b rồi chọn mô hình đó.",
+                 bg=BG, fg=MUTED, wraplength=510, justify="left").pack(anchor="w", padx=20)
+
+        def save():
+            chosen_name = name.get().strip()
+            chosen_model = model.get().strip()
+            if not chosen_name or not chosen_model or any(c.isspace() for c in chosen_model):
+                messagebox.showerror("Thiếu thông tin", "Hãy nhập tên và mô hình Ollama hợp lệ.", parent=dialog)
+                return
+            self.name_var.set(chosen_name[:40])
+            self.model_var.set(chosen_model)
+            try:
+                self._save_settings()
+            except OSError as exc:
+                messagebox.showerror("Không lưu được", str(exc), parent=dialog)
+                return
+            self._render_chat()
+            self._check_ollama()
+            dialog.destroy()
+
+        controls = tk.Frame(dialog, bg=BG)
+        controls.pack(fill="x", padx=20, pady=18)
+        self._button(controls, "Lưu", save, primary=True).pack(side="right")
+        self._button(controls, "Hướng dẫn cài", self._setup_guide).pack(side="left")
+        self._button(controls, "Kiểm tra lại", lambda: self._check_ollama(
+            lambda choices: model.configure(values=choices) if dialog.winfo_exists() else None)).pack(side="left", padx=7)
+        if self.workspace:
+            self._button(dialog, "Bỏ quyền truy cập thư mục", self._clear_folder).pack(anchor="w", padx=20)
+
+    def _clear_folder(self):
+        if self.busy:
+            messagebox.showinfo("Đang trả lời", "Hãy đợi Mira trả lời xong trước khi bỏ thư mục.")
+            return
+        self.workspace = None
+        self.folder_var.set("Chưa chọn thư mục • Mira chỉ trò chuyện")
+        self._save_settings()
+        self.status_var.set("Đã bỏ quyền truy cập thư mục.")
+
+    def _setup_guide(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Cài Ollama cho Mira")
+        dialog.geometry("550x400")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Bắt đầu trò chuyện với Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
+        instructions = ("1. Cài Ollama cho Windows rồi mở Ollama.\n\n"
+                        "2. Mở PowerShell và chạy:\n    ollama pull qwen3:4b\n"
+                        "   Máy yếu, ưu tiên tốc độ: ollama pull qwen3:1.7b\n"
+                        "   Để Mira xem ảnh: ollama pull qwen3-vl:4b\n\n"
+                        "3. Quay lại Mira và bấm Kiểm tra lại.\n"
+                        "   Ô NHẮN MIRA ở dưới cùng là nơi bắt đầu chat.")
+        tk.Label(dialog, text=instructions, bg=BG, fg=TEXT, justify="left",
+                 anchor="w", font=("Segoe UI", 11)).pack(fill="x", padx=20)
+        self._button(dialog, "Mở trang tải Ollama", lambda: webbrowser.open("https://ollama.com/download/windows"),
+                     primary=True).pack(anchor="w", padx=20, pady=14)
+
+    def _check_ollama(self, on_done=None):
+        self.health_var.set("Đang kiểm tra Ollama trên máy…")
+        self.health_label.configure(fg=MUTED)
+
+        def run():
+            try:
+                models = self.agent.client.list_models()
+                error = None
+            except RuntimeError as exc:
+                models, error = [], str(exc)
+
+            def update():
+                if self.closed:
+                    return
+                self.available_models = models
+                if on_done:
+                    on_done(models)
+                if error:
+                    self.health_var.set("●  " + error)
+                    self.health_label.configure(fg="#ffc59f")
+                elif not models:
+                    self.health_var.set("●  Ollama đang chạy • chưa có mô hình. Xem Cách cài.")
+                    self.health_label.configure(fg="#ffc59f")
+                elif self.model_var.get() not in models:
+                    self.health_var.set(f"●  Chưa có {self.model_var.get()} • hãy tải hoặc chọn mô hình đã cài.")
+                    self.health_label.configure(fg="#ffc59f")
+                else:
+                    self.health_var.set(f"●  Ollama sẵn sàng • {self.model_var.get()}")
+                    self.health_label.configure(fg=ACCENT)
+
+            try:
+                self.after(0, update)
+            except RuntimeError:
+                pass
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _fill_prompt(self, prompt: str):
+        self.input.delete("1.0", "end")
+        self.input.insert("1.0", prompt)
+        self.input.focus_set()
+        self.input.mark_set("insert", "end-1c")
+
+    def _attach_image(self):
+        if self.busy:
+            return
+        filename = filedialog.askopenfilename(title="Chọn ảnh màn hình để gửi cho Mira",
+                                              filetypes=[("Ảnh PNG / JPEG", "*.png *.jpg *.jpeg")])
+        if filename:
+            try:
+                path = Path(filename)
+                if path.stat().st_size > 5 * 1024 * 1024:
+                    raise ValueError("Ảnh lớn hơn 5 MiB. Hãy giảm dung lượng trước khi gửi.")
+                data = path.read_bytes()
+                if not (data.startswith(b"\x89PNG\r\n\x1a\n") or data.startswith(b"\xff\xd8\xff")):
+                    raise ValueError("Chỉ hỗ trợ ảnh PNG hoặc JPEG hợp lệ.")
+                self.attachment_data = data
+                self.attachment_name = path.name
+                self.attachment_var.set("Ảnh: " + (path.name if len(path.name) <= 35 else path.name[:32] + "…"))
+                self.input.focus_set()
+            except (OSError, ValueError) as exc:
+                messagebox.showerror("Không đính kèm được ảnh", str(exc))
+
+    def _clear_image(self):
+        self.attachment_data = None
+        self.attachment_name = None
+        self.attachment_var.set("Chưa đính kèm ảnh")
+
+    @staticmethod
+    def _newline(event):
+        event.widget.insert("insert", "\n")
+        return "break"
+
+    def _approve_edit(self, path: str, reason: str, diff: str) -> bool:
         done = threading.Event()
-        self.pending_edit = done
-        accepted = [False]
+        self.pending_approval = done
+        decision = [False]
 
         def show():
             if self.closed:
                 done.set()
                 return
             dialog = tk.Toplevel(self)
-            dialog.title("Duyệt thay đổi — " + path)
-            dialog.geometry("890x630")
-            dialog.minsize(620, 420)
+            dialog.title("Duyệt thay đổi • " + path)
+            dialog.geometry("880x640")
+            dialog.minsize(650, 420)
             dialog.transient(self)
             dialog.grab_set()
-            tk.Label(dialog, text="File: " + path + "\n" + reason +
-                     "\n\nHãy xem các dòng + / − trước khi duyệt. File cũ sẽ được sao lưu.",
-                     justify="left", anchor="w", wraplength=830, padx=16, pady=12).pack(fill="x")
-            frame = tk.Frame(dialog)
-            frame.pack(fill="both", expand=True, padx=16)
-            preview = tk.Text(frame, wrap="none", font=("Consolas", 10))
-            ybar = tk.Scrollbar(frame, command=preview.yview)
-            xbar = tk.Scrollbar(frame, orient="horizontal", command=preview.xview)
+            tk.Label(dialog, text=f"File: {path}\nLý do: {reason}\nChỉ ghi nếu bạn chọn Duyệt. File cũ được sao lưu.",
+                     justify="left", anchor="w", padx=16, pady=12, wraplength=820).pack(fill="x")
+            area = tk.Frame(dialog)
+            area.pack(fill="both", expand=True, padx=16)
+            preview = tk.Text(area, wrap="none", font=("Consolas", 10))
+            ybar = tk.Scrollbar(area, command=preview.yview)
+            xbar = tk.Scrollbar(area, orient="horizontal", command=preview.xview)
             preview.configure(yscrollcommand=ybar.set, xscrollcommand=xbar.set)
-            preview.tag_configure("add", foreground="#126b36")
-            preview.tag_configure("remove", foreground="#a42222")
+            preview.tag_configure("added", background="#d9f2df")
+            preview.tag_configure("removed", background="#ffe0db")
             for line in diff.splitlines(keepends=True):
-                tag = "add" if line.startswith("+") else "remove" if line.startswith("-") else ""
+                tag = "added" if line.startswith("+") else "removed" if line.startswith("-") else None
                 preview.insert("end", line, tag)
             preview.configure(state="disabled")
             preview.grid(row=0, column=0, sticky="nsew")
             ybar.grid(row=0, column=1, sticky="ns")
             xbar.grid(row=1, column=0, sticky="ew")
-            frame.grid_rowconfigure(0, weight=1)
-            frame.grid_columnconfigure(0, weight=1)
+            area.grid_columnconfigure(0, weight=1)
+            area.grid_rowconfigure(0, weight=1)
 
-            def finish(value=False):
-                accepted[0] = value
+            def finish(accepted=False):
+                decision[0] = accepted
                 done.set()
                 dialog.destroy()
 
-            controls = tk.Frame(dialog, pady=12)
+            controls = tk.Frame(dialog, pady=13)
             controls.pack()
             ttk.Button(controls, text="Từ chối", command=finish).pack(side="left", padx=8)
-            ttk.Button(controls, text="Duyệt và ghi file",
-                       command=lambda: finish(True)).pack(side="left", padx=8)
+            ttk.Button(controls, text="Duyệt và ghi file", command=lambda: finish(True)).pack(side="left", padx=8)
             dialog.protocol("WM_DELETE_WINDOW", finish)
+            dialog.focus_set()
 
         try:
             self.after(0, show)
         except RuntimeError:
             return False
         done.wait()
-        self.pending_edit = None
-        return accepted[0] and not self.closed
-
-    def _set_busy(self, value):
-        self.busy = value
-        self.send_button.configure(state="disabled" if value else "normal")
-        self.new_button.configure(state="disabled" if value else "normal")
+        self.pending_approval = None
+        return decision[0] and not self.closed
 
     def _send(self, event=None):
-        if self.busy:
-            return "break"
-        text = self.input.get("1.0", "end").strip()
+        if not self.busy:
+            self._submit(self.input.get("1.0", "end").strip())
+        return "break"
+
+    def _retry(self):
+        if not self.busy and self.retry_text and self.retry_chat_id == self.active_chat_id:
+            self._submit(self.retry_text, retry=True, image=self.retry_image,
+                         image_name=self.retry_image_name)
+
+    def _submit(self, text: str, *, retry=False, image=None, image_name=None):
+        if not retry:
+            image, image_name = self.attachment_data, self.attachment_name
+        if not text and image is not None:
+            text = "Hãy xem ảnh này và giúp tôi hiểu hoặc xử lý vấn đề."
         if not text:
-            return "break"
+            return
+        display_text = text + (f"\n[Đính kèm ảnh: {image_name}]" if image_name else "")
+        chat_id = self.active_chat_id
         name = self.name_var.get().strip()[:40] or "Mira"
         model = self.model_var.get().strip()
         try:
             self._save_settings()
-            previous = self.chats.messages(self.current_id)
-            self.chats.append(self.current_id, "user", text)
+            existing = list(self.chats.get(chat_id)["messages"])
+            if retry and existing and existing[-1] == {"role": "user", "content": display_text}:
+                history = existing[:-1]
+            else:
+                history = existing
+                self.chats.append(chat_id, "user", display_text)
+                self._add_message("Bạn", display_text, user=True)
+                self.starters.grid_remove()
+                self._refresh_chat_list()
+                self.title_var.set(self.chats.get(chat_id)["title"])
         except (OSError, ValueError) as exc:
             messagebox.showerror("Không lưu được tin nhắn", str(exc))
-            return "break"
+            return
         self.input.delete("1.0", "end")
-        self._add_message("Bạn", text)
-        self._refresh_history()
-        self._set_busy(True)
-        self.status_var.set("Mira đang suy nghĩ…")
+        self._clear_image()
+        self.busy = True
+        self.retry_text = None
+        self.retry_chat_id = None
+        self.retry_image = None
+        self.retry_image_name = None
+        self.retry_button.pack_forget()
+        self.send_button.configure(state="disabled")
+        self.status_var.set("Mira đang trả lời… Nội dung sẽ xuất hiện dần.")
         workspace = self.workspace
-        memories = self.memories.prompt()
-        chat_id = self.current_id
+        memories = ("Bộ sở thích:\n" + self.preferences.prompt_for(text) +
+                    "\nGhi nhớ được chọn:\n" + (self.memories.prompt_for(text) or "(chưa có)"))
+        fast = self.fast_var.get()
+        self.stream_chat_id = chat_id
+        self.stream_text = ""
+        chunks = queue.SimpleQueue()
+        started = time.monotonic()
+        self._show_pending(name)
+
+        def drain():
+            parts = []
+            while True:
+                try:
+                    parts.append(chunks.get_nowait())
+                except queue.Empty:
+                    break
+            if parts:
+                self.stream_text += "".join(parts)
+                if self.active_chat_id == chat_id:
+                    self._show_pending(name)
+
+        def pump():
+            if self.busy and self.stream_chat_id == chat_id:
+                drain()
+                self.after(90, pump)
+
+        self.after(90, pump)
+
+        def report(action):
+            if not self.closed:
+                try:
+                    self.after(0, self.status_var.set, action)
+                except RuntimeError:
+                    pass
 
         def run():
             try:
-                answer = self.agent.respond(text, previous, model, name, memories,
-                                            workspace, self._approve_edit,
-                                            lambda action: self.after(0, self.status_var.set, action))
+                answer = self.agent.respond(text, history, model, name, memories, workspace,
+                                            self._approve_edit, report, image=image,
+                                            on_token=chunks.put, fast=fast)
+                error = None
             except Exception as exc:
-                answer = "Có lỗi: " + str(exc)
+                answer, error = "", str(exc)
 
             def complete():
-                if self.closed:
-                    return
-                try:
-                    self.chats.append(chat_id, "assistant", answer)
-                except (OSError, ValueError) as exc:
-                    messagebox.showerror("Không lưu được câu trả lời", str(exc))
-                self._add_message(name, answer)
-                self._refresh_history()
-                self._set_busy(False)
-                self.status_var.set("Sẵn sàng trò chuyện.")
+                drain()
+                self._remove_pending()
+                self.stream_chat_id = None
+                self.stream_text = ""
+                if error:
+                    self.retry_text = text
+                    self.retry_chat_id = chat_id
+                    self.retry_image = image
+                    self.retry_image_name = image_name
+                    if self.active_chat_id == chat_id:
+                        self.retry_button.pack(side="right")
+                    self.status_var.set("Không gửi được • xem hướng dẫn hoặc bấm Thử gửi lại.")
+                    if self.active_chat_id == chat_id:
+                        self._add_message("Mira · lỗi", error)
+                else:
+                    try:
+                        self.chats.append(chat_id, "assistant", answer)
+                        self._refresh_chat_list()
+                    except (OSError, ValueError) as exc:
+                        messagebox.showerror("Không lưu được câu trả lời", str(exc))
+                    if self.active_chat_id == chat_id:
+                        self._add_message(name, answer)
+                    self.status_var.set(f"Sẵn sàng • trả lời trong {time.monotonic() - started:.1f} giây")
+                self.busy = False
+                self.send_button.configure(state="normal")
                 self.input.focus_set()
 
             try:
@@ -660,13 +818,6 @@ class MiraApp(tk.Tk):
                 pass
 
         threading.Thread(target=run, daemon=True).start()
-        return "break"
-
-    def _close(self):
-        self.closed = True
-        if self.pending_edit:
-            self.pending_edit.set()
-        self.destroy()
 
 
 def main():

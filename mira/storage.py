@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -69,18 +70,39 @@ class MemoryStore:
         save_json(self.path, kept)
         self.items = kept
 
-    def update(self, item_id: str, text: str) -> None:
+    def edit(self, item_id: str, text: str) -> None:
         text = text.strip()
         if not text or len(text) > 500:
             raise ValueError("Điều cần nhớ phải dài từ 1 đến 500 ký tự.")
-        updated = [dict(item, text=text) if item.get("id") == item_id else item for item in self.items]
-        if updated == self.items:
+        if not any(item.get("id") == item_id for item in self.items):
             raise ValueError("Không tìm thấy điều cần sửa.")
+        updated = [{**item, "text": text} if item.get("id") == item_id else item for item in self.items]
         save_json(self.path, updated)
         self.items = updated
 
+    # Keep the v2 API used by existing installations and their checks.
+    update = edit
+
     def prompt(self) -> str:
         return "\n".join(f"- {item['text']}" for item in self.items)
+
+    def prompt_for(self, request: str) -> str:
+        """Keep relevant and recent memories short for local inference."""
+        words = set(re.findall(r"\w{3,}", request.casefold()))
+        matching = [item for item in reversed(self.items)
+                    if words & set(re.findall(r"\w{3,}", item["text"].casefold()))]
+        selected = matching[:5]
+        selected_ids = {item["id"] for item in selected}
+        selected.extend(item for item in reversed(self.items) if item["id"] not in selected_ids)
+        lines = []
+        for item in selected:
+            line = "- " + item["text"]
+            if len("\n".join(lines)) + len(line) > 1200:
+                break
+            lines.append(line)
+            if len(lines) == 8:
+                break
+        return "\n".join(lines)
 
 
 class ChatStore:
@@ -89,7 +111,8 @@ class ChatStore:
         data = load_json(path, [])
         if not isinstance(data, list):
             raise ValueError("Lịch sử trò chuyện không đúng định dạng.")
-        self.messages = [m for m in data if m.get("role") in {"user", "assistant"} and isinstance(m.get("content"), str)]
+        self.messages = [m for m in data if isinstance(m, dict) and m.get("role") in {"user", "assistant"}
+                         and isinstance(m.get("content"), str)]
 
     def append(self, role: str, content: str) -> None:
         if role not in {"user", "assistant"}:
@@ -104,80 +127,93 @@ class ChatStore:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class ConversationStore:
-    """Named conversations; imports the v1 conversation on first launch."""
+    """A small collection of local conversations; imports the original chat once."""
 
     def __init__(self, path: Path, legacy_path: Path | None = None):
         self.path = path
         if path.exists():
             data = load_json(path, [])
+            if not isinstance(data, list):
+                raise ValueError("Danh sách cuộc trò chuyện không đúng định dạng.")
+            self.items = data
         else:
-            legacy = load_json(legacy_path, []) if legacy_path else []
-            data = [{
-                "id": uuid.uuid4().hex,
-                "title": "Cuộc trò chuyện trước",
-                "updated_at": _now(),
-                "messages": legacy[-60:],
-            }] if isinstance(legacy, list) and legacy else []
-            if data:
-                save_json(path, data)
-        if not isinstance(data, list):
-            raise ValueError("Lịch sử trò chuyện không đúng định dạng.")
-        self.chats = [item for item in data if isinstance(item, dict)
-                      and isinstance(item.get("id"), str)
-                      and isinstance(item.get("messages"), list)]
+            self.items = []
+            if legacy_path and legacy_path.exists():
+                messages = ChatStore(legacy_path).messages
+                if messages:
+                    self.items = [self._item("Cuộc trò chuyện trước đây", messages)]
+                    save_json(self.path, self.items)
+        self._validate()
 
-    def list(self) -> list[dict]:
-        return sorted(self.chats, key=lambda item: item.get("updated_at", ""), reverse=True)
+    @staticmethod
+    def _item(title: str, messages: list[dict] | None = None) -> dict:
+        stamp = _now()
+        return {"id": uuid.uuid4().hex, "title": title, "created_at": stamp,
+                "updated_at": stamp, "messages": messages or []}
+
+    def _validate(self) -> None:
+        for item in self.items:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not isinstance(item.get("messages"), list):
+                raise ValueError("Một cuộc trò chuyện đã lưu không đúng định dạng.")
+            if any(not isinstance(m, dict) or m.get("role") not in {"user", "assistant"}
+                   or not isinstance(m.get("content"), str) for m in item["messages"]):
+                raise ValueError("Tin nhắn đã lưu không đúng định dạng.")
 
     def get(self, chat_id: str) -> dict | None:
-        return next((item for item in self.chats if item["id"] == chat_id), None)
+        for item in self.items:
+            if item["id"] == chat_id:
+                return item
+        return None
+
+    def list(self) -> list[dict]:
+        return list(self.items)
 
     def messages(self, chat_id: str) -> list[dict]:
-        chat = self.get(chat_id)
-        return list(chat["messages"]) if chat else []
+        item = self.get(chat_id)
+        return list(item["messages"]) if item else []
 
     def create(self) -> str:
-        item = {"id": uuid.uuid4().hex, "title": "Cuộc trò chuyện mới",
-                "updated_at": _now(), "messages": []}
-        updated = self.chats + [item]
+        return self.new()["id"]
+
+    def new(self) -> dict:
+        item = self._item("Cuộc trò chuyện mới")
+        updated = [item] + self.items
         save_json(self.path, updated)
-        self.chats = updated
-        return item["id"]
+        self.items = updated
+        return item
 
     def append(self, chat_id: str, role: str, content: str) -> None:
-        if role not in {"user", "assistant"}:
-            raise ValueError("Vai trò tin nhắn không hợp lệ.")
-        chat = self.get(chat_id)
-        if chat is None:
+        if role not in {"user", "assistant"} or not isinstance(content, str):
+            raise ValueError("Tin nhắn không hợp lệ.")
+        item = self.get(chat_id)
+        if item is None:
             raise ValueError("Không tìm thấy cuộc trò chuyện.")
-        updated = []
-        for item in self.chats:
-            if item["id"] != chat_id:
-                updated.append(item)
-                continue
-            messages = (item["messages"] + [{"role": role, "content": content}])[-60:]
-            title = item["title"]
-            if role == "user" and not any(m.get("role") == "user" for m in item["messages"]):
-                title = (content.strip().splitlines()[0][:38] or "Cuộc trò chuyện mới")
-            updated.append(dict(item, messages=messages, title=title, updated_at=_now()))
+        messages = item["messages"] + [{"role": role, "content": content}]
+        title = item.get("title", "Cuộc trò chuyện mới")
+        if role == "user" and not any(m["role"] == "user" for m in item["messages"]):
+            title = " ".join(content.split())[:48] or title
+        changed = {**item, "title": title, "updated_at": _now(), "messages": messages}
+        updated = [changed] + [other for other in self.items if other["id"] != chat_id]
         save_json(self.path, updated)
-        self.chats = updated
+        self.items = updated
 
     def rename(self, chat_id: str, title: str) -> None:
-        title = title.strip()[:60]
-        if not title or self.get(chat_id) is None:
-            raise ValueError("Tên cuộc trò chuyện không hợp lệ.")
-        updated = [dict(item, title=title) if item["id"] == chat_id else item for item in self.chats]
+        title = " ".join(title.split())[:80]
+        if not title:
+            raise ValueError("Tên cuộc trò chuyện không được để trống.")
+        if not any(item["id"] == chat_id for item in self.items):
+            raise ValueError("Không tìm thấy cuộc trò chuyện.")
+        updated = [{**item, "title": title} if item["id"] == chat_id else item for item in self.items]
         save_json(self.path, updated)
-        self.chats = updated
+        self.items = updated
 
     def delete(self, chat_id: str) -> None:
-        updated = [item for item in self.chats if item["id"] != chat_id]
-        if len(updated) == len(self.chats):
+        updated = [item for item in self.items if item["id"] != chat_id]
+        if len(updated) == len(self.items):
             raise ValueError("Không tìm thấy cuộc trò chuyện.")
         save_json(self.path, updated)
-        self.chats = updated
+        self.items = updated

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import ast
 import os
 import shutil
 import stat
@@ -95,6 +96,22 @@ class Workspace:
         except UnicodeDecodeError as exc:
             raise WorkspaceError("Chỉ hỗ trợ file văn bản UTF-8.") from exc
         return f"File: {relative}\n" + "\n".join(f"{i:>4}: {line}" for i, line in enumerate(contents.splitlines(), 1))
+
+    def check_python_syntax(self, relative: str) -> str:
+        """Parse Python code without executing it or creating bytecode files."""
+        if not relative.lower().endswith(".py"):
+            raise WorkspaceError("Chỉ kiểm tra cú pháp file .py.")
+        target = self._path(relative)
+        if not target.is_file() or target.stat().st_size > MAX_READ:
+            raise WorkspaceError("File không tồn tại hoặc lớn hơn 64 KiB.")
+        try:
+            source = target.read_text(encoding="utf-8")
+            ast.parse(source, filename=relative)
+        except (UnicodeDecodeError, SyntaxError) as exc:
+            if isinstance(exc, SyntaxError):
+                return f"Lỗi cú pháp {relative}:{exc.lineno}:{exc.offset}: {exc.msg}"
+            raise WorkspaceError("Chỉ hỗ trợ file văn bản UTF-8.") from exc
+        return f"Cú pháp Python của {relative} hợp lệ (chưa chạy chương trình)."
 
     def search_text(self, query: str) -> str:
         if not isinstance(query, str) or not 2 <= len(query) <= 100:
