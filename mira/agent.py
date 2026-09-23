@@ -30,8 +30,13 @@ TOOLS = [
 ]
 
 
+def is_cloud_model(model: str) -> bool:
+    """Recognize the public Ollama CLI cloud tags, such as gemma4:cloud."""
+    return model.casefold().endswith(("-cloud", ":cloud"))
+
+
 class OllamaClient:
-    """Only connects to Ollama's loopback address; never sends local files online."""
+    """Connects to loopback; Ollama can route cloud-tagged models online."""
 
     def __init__(self, timeout: int = 180):
         self.timeout = timeout
@@ -103,6 +108,12 @@ class OllamaClient:
                 raise RuntimeError(f"Không thấy mô hình '{model}'. Hãy chạy: ollama pull {model}") from exc
             if exc.code == 400 and "image" in details.lower():
                 raise RuntimeError("Mô hình này không nhận ảnh. Hãy chọn một mô hình có khả năng nhìn ảnh trong Cài đặt.") from exc
+            if is_cloud_model(model) and exc.code in (401, 403, 402):
+                raise RuntimeError("Không dùng được Ollama Cloud: hãy chạy ollama signin và kiểm tra "
+                                   "mô hình bạn chọn có trong gói Free của tài khoản.") from exc
+            if is_cloud_model(model) and exc.code == 429:
+                raise RuntimeError("Ollama Cloud đang giới hạn lượt dùng hoặc quá tải. "
+                                   "Hãy kiểm tra hạn mức Free, thử lại sau hoặc chuyển về AI trên máy.") from exc
             raise RuntimeError(f"Ollama báo lỗi {exc.code}: {details}") from exc
         except (urllib.error.URLError, TimeoutError) as exc:
             raise RuntimeError("Không kết nối được Ollama ở 127.0.0.1:11434. Hãy mở Ollama rồi thử lại.") from exc

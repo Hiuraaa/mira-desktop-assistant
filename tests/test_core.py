@@ -5,13 +5,39 @@ import io
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 
-from mira.agent import Agent, OllamaClient, system_prompt
+from mira.agent import Agent, OllamaClient, is_cloud_model, system_prompt
 from mira.preferences import PreferenceStore
 from mira.speech import clean_for_speech, speech_command
 from mira.storage import ConversationStore, MemoryStore, save_json
 from mira.workspace import Workspace, WorkspaceError
+
+
+class CloudModelTests(unittest.TestCase):
+    def test_only_documented_cloud_tags_are_recognized(self):
+        self.assertTrue(is_cloud_model("gemma4:cloud"))
+        self.assertTrue(is_cloud_model("gpt-oss:20b-cloud"))
+        self.assertTrue(is_cloud_model("GEMMA4:CLOUD"))
+        self.assertFalse(is_cloud_model("qwen3:4b"))
+        self.assertFalse(is_cloud_model("cloudy-local:4b"))
+
+    def test_cloud_account_errors_explain_free_access_and_limits(self):
+        class RejectingOpener:
+            def __init__(self, code):
+                self.code = code
+
+            def open(self, request, timeout):
+                raise urllib.error.HTTPError(request.full_url, self.code, "error", {},
+                                             io.BytesIO(b'{"error":"quota"}'))
+
+        client = OllamaClient()
+        for code, hint in ((402, "gói Free"), (429, "hạn mức Free")):
+            with self.subTest(code=code):
+                client.opener = RejectingOpener(code)
+                with self.assertRaisesRegex(RuntimeError, hint):
+                    client.chat("gemma4:cloud", [{"role": "user", "content": "hi"}], [])
 
 
 class WorkspaceTests(unittest.TestCase):
