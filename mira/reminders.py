@@ -102,6 +102,30 @@ class ReminderStore:
                 self._items = updated
         return ready
 
+    def pending_telegram(self, now: datetime | None = None) -> list[dict]:
+        """Telegram delivery is independent of the desktop popup and retried on failure."""
+        now = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        with self.lock:
+            result = []
+            for item in self._items:
+                start = datetime.fromisoformat(item["when"]).astimezone(timezone.utc)
+                due_at = start - timedelta(minutes=item["lead_minutes"])
+                if (item.get("telegram_notified_at") is None and due_at <= now
+                        <= start + timedelta(hours=24)):
+                    result.append(item.copy())
+            return result[:10]
+
+    def mark_telegram_notified(self, reminder_id: str) -> None:
+        with self.lock:
+            if not any(item["id"] == reminder_id for item in self._items):
+                return  # It was deleted while Telegram was sending.
+            updated = [{**item, "telegram_notified_at": datetime.now(timezone.utc).isoformat()}
+                       if item["id"] == reminder_id and item.get("telegram_notified_at") is None
+                       else item for item in self._items]
+            if updated != self._items:
+                save_json(self.path, updated)
+                self._items = updated
+
     def calendar_file(self, reminder_id: str) -> bytes:
         with self.lock:
             item = next((item.copy() for item in self._items if item["id"] == reminder_id), None)

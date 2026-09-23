@@ -86,6 +86,11 @@ class VisibleComposerTests(unittest.TestCase):
                         self.assertTrue(any(child.title() == "Điện thoại & truy cập từ xa"
                                             for child in app.winfo_children()
                                             if isinstance(child, tk.Toplevel)))
+                        app._telegram_dialog()
+                        app.update()
+                        self.assertTrue(any(child.title() == "Mira qua Telegram"
+                                            for child in app.winfo_children()
+                                            if isinstance(child, tk.Toplevel)))
                     finally:
                         app._close()
         except tk.TclError as exc:

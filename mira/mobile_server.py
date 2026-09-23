@@ -42,6 +42,11 @@ class MobileConversation:
             save_json(self.path, updated)
             self.messages = updated
 
+    def clear(self):
+        with self.lock:
+            save_json(self.path, [])
+            self.messages = []
+
 
 class PhoneServer:
     """Serves chat/reminders on 127.0.0.1; Tailscale Serve supplies private HTTPS."""

@@ -10,7 +10,7 @@ import sys
 import time
 import tkinter as tk
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
@@ -21,6 +21,7 @@ from .preferences_ui import open_preference_dialog
 from .reminders import ReminderStore, draft_reminder
 from .speech import SpeechPlayer
 from .storage import ConversationStore, MemoryStore, data_dir, load_json, save_json
+from .telegram_bot import TelegramBot
 from .workspace import Workspace, WorkspaceError
 
 
@@ -51,6 +52,9 @@ class MiraApp(tk.Tk):
         self.reminders = ReminderStore(self.path / "reminders.json")
         self.agent = Agent()
         self.phone_server: PhoneServer | None = None
+        self.telegram_bot: TelegramBot | None = None
+        self.telegram_token: str | None = None
+        self.telegram_credentials_path = self.path / "telegram_credentials.json"
         self.speaker = SpeechPlayer()
         self.busy = False
         self.closed = False
@@ -104,6 +108,12 @@ class MiraApp(tk.Tk):
         self.after(200, self._check_ollama)
         self.after(280, self._animate_avatar)
         self.after(5_000, self._poll_reminders)
+        saved_bot = load_json(self.telegram_credentials_path, {})
+        if isinstance(saved_bot, dict) and saved_bot.get("enabled") and isinstance(saved_bot.get("token"), str):
+            try:
+                self._start_telegram(saved_bot["token"])
+            except (OSError, ValueError):
+                self.status_var.set("Telegram chưa kết nối được; mở mục Điện thoại để kiểm tra.")
 
     def _button(self, parent, label, command, *, primary=False, subtle=False):
         return tk.Button(parent, text=label, command=command, relief="flat", cursor="hand2",
@@ -293,6 +303,12 @@ class MiraApp(tk.Tk):
                 cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
                 persona="playful" if self.playful_var.get() else "standard",
                 persona_note=self.persona_note)
+        if self.telegram_bot:
+            self.telegram_bot.update_config(
+                model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
+                cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                persona="playful" if self.playful_var.get() else "standard",
+                persona_note=self.persona_note)
 
     def _toggle_persona(self):
         try:
@@ -307,6 +323,9 @@ class MiraApp(tk.Tk):
         if self.phone_server:
             self.phone_server.stop()
             self.phone_server = None
+        if self.telegram_bot:
+            self.telegram_bot.stop()
+            self.telegram_bot = None
         self.speaker.stop()
         if getattr(self, "model_download_proc", None):
             process = self.model_download_proc
@@ -666,6 +685,7 @@ class MiraApp(tk.Tk):
         self._button(controls, "Bật / tạo mã mới", start, primary=True).pack(side="left")
         self._button(controls, "Ngắt kết nối", stop).pack(side="left", padx=8)
         self._button(controls, "Lịch nhắc", self._reminders_dialog).pack(side="left")
+        self._button(controls, "Nhắc qua Telegram", self._telegram_dialog).pack(side="left", padx=(8, 0))
         tk.Label(dialog, text="Chat trên điện thoại lưu riêng và không cấp quyền đọc file, "
                  "sửa code hay chạy lệnh. Nếu chọn mô hình cloud, Mira chỉ gửi sau khi "
                  "bạn đã đồng ý ở mục Ollama Cloud trên máy tính.",
@@ -683,6 +703,115 @@ class MiraApp(tk.Tk):
         if self.phone_server:
             code.set(self.phone_server.new_pairing_code())
             status.set("Đã bật • mã mới vừa được tạo cho điện thoại")
+
+    def _start_telegram(self, token: str):
+        if self.telegram_bot and self.telegram_token == token and self.telegram_bot.running():
+            return
+        candidate = TelegramBot(self.path, token, self.agent, self.reminders,
+                                self.memories, self.preferences,
+                                model=self.model_var.get().strip(),
+                                name=self.name_var.get().strip() or "Mira",
+                                cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                                persona="playful" if self.playful_var.get() else "standard",
+                                persona_note=self.persona_note)
+        if self.telegram_bot:
+            self.telegram_bot.stop()
+        self.telegram_bot = candidate
+        self.telegram_token = token
+        candidate.start()
+
+    def _telegram_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mira qua Telegram")
+        dialog.geometry("650x530")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Mira nhắn lịch qua Telegram", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(17, 8))
+        tk.Label(dialog, text="1. Nhắn /newbot cho @BotFather trên Telegram. Sao chép token bot.\n"
+                 "2. Dán token vào đây và bấm Bật. Chờ trạng thái sẵn sàng.\n"
+                 "3. Trên điện thoại, mở bot của bạn và gửi /start theo sau là mã 8 chữ số.",
+                 bg=BG, fg=TEXT, justify="left", wraplength=605).pack(anchor="w", padx=20)
+        self._button(dialog, "Mở @BotFather", lambda: webbrowser.open(
+            "https://t.me/BotFather")).pack(anchor="w", padx=20, pady=(9, 7))
+        tk.Label(dialog, text="Token bot (chỉ nhập trong Mira; không gửi cho người khác)",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        token_entry = tk.Entry(dialog, show="•", font=("Consolas", 11), bg="#f7fbff", fg=INK)
+        token_entry.pack(fill="x", padx=20, pady=(4, 9))
+        saved = load_json(self.telegram_credentials_path, {})
+        if isinstance(saved, dict) and isinstance(saved.get("token"), str):
+            token_entry.insert(0, saved["token"])
+        elif self.telegram_token:
+            token_entry.insert(0, self.telegram_token)
+        remember = tk.BooleanVar(value=bool(isinstance(saved, dict) and saved.get("token")))
+        tk.Checkbutton(dialog, text="Lưu token trong hồ sơ Windows và tự bật khi mở Mira",
+                       variable=remember, bg=BG, fg=TEXT, activebackground=BG,
+                       activeforeground=TEXT, selectcolor=PANEL).pack(anchor="w", padx=20)
+        status = tk.StringVar(value="Telegram chưa bật")
+        code = tk.StringVar(value="—")
+        tk.Label(dialog, textvariable=status, bg=BG, fg=ACCENT,
+                 wraplength=605).pack(anchor="w", padx=20, pady=(9, 3))
+        tk.Label(dialog, text="Mã ghép nối một lần, hiệu lực 5 phút:", bg=BG,
+                 fg=MUTED).pack(anchor="w", padx=20)
+        tk.Label(dialog, textvariable=code, bg=PANEL, fg=ACCENT, padx=14, pady=8,
+                 font=("Consolas", 20, "bold")).pack(anchor="w", padx=20, pady=(4, 0))
+
+        def activate():
+            token = token_entry.get().strip()
+            try:
+                self._start_telegram(token)
+                if remember.get():
+                    save_json(self.telegram_credentials_path, {"token": token, "enabled": True})
+                else:
+                    self.telegram_credentials_path.unlink(missing_ok=True)
+                code.set(self.telegram_bot.new_pairing_code())
+                status.set(self.telegram_bot.status())
+            except (OSError, ValueError) as exc:
+                messagebox.showerror("Không bật được Telegram", str(exc), parent=dialog)
+
+        def disable():
+            if self.telegram_bot:
+                self.telegram_bot.stop()
+                self.telegram_bot = None
+                self.telegram_token = None
+            if remember.get():
+                save_json(self.telegram_credentials_path,
+                          {"token": token_entry.get().strip(), "enabled": False})
+            else:
+                self.telegram_credentials_path.unlink(missing_ok=True)
+            status.set("Đã tắt Telegram")
+            code.set("—")
+
+        def revoke():
+            if self.telegram_bot and messagebox.askyesno(
+                    "Thu hồi điện thoại", "Ngắt quyền bot của điện thoại đã ghép nối?", parent=dialog):
+                try:
+                    self.telegram_bot.unpair()
+                    code.set(self.telegram_bot.new_pairing_code())
+                    status.set("Đã thu hồi; điện thoại cần ghép nối lại")
+                except OSError as exc:
+                    messagebox.showerror("Không thu hồi được", str(exc), parent=dialog)
+
+        buttons = tk.Frame(dialog, bg=BG)
+        buttons.pack(fill="x", padx=20, pady=(12, 7))
+        self._button(buttons, "Bật / tạo mã mới", activate, primary=True).pack(side="left")
+        self._button(buttons, "Tắt", disable).pack(side="left", padx=7)
+        self._button(buttons, "Thu hồi điện thoại", revoke).pack(side="left")
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        tk.Label(dialog, text=f"Trên Telegram: /nhac {tomorrow} 09:00 | Gọi mẹ → "
+                 "kiểm tra → bấm Lưu. Hoặc /nhac Nhắc tôi ngày mai lúc 9 giờ gọi mẹ "
+                 "để AI điền bản nháp. /lich xem lịch. Chat thường không có quyền sửa file hay chạy lệnh.",
+                 bg=BG, fg=MUTED, wraplength=605, justify="left").pack(
+                     anchor="w", padx=20, pady=(4, 0))
+
+        def refresh():
+            if not dialog.winfo_exists() or self.closed:
+                return
+            if self.telegram_bot:
+                status.set(self.telegram_bot.status())
+            dialog.after(1200, refresh)
+
+        refresh()
 
     def _reminders_dialog(self):
         dialog = tk.Toplevel(self)
