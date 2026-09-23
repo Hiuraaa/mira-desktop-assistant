@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -56,8 +57,9 @@ class MemoryStore:
         if len(self.items) >= 50:
             raise ValueError("Bộ nhớ đã đủ 50 mục. Hãy xóa một mục cũ.")
         item = {"id": uuid.uuid4().hex, "text": text}
-        self.items.append(item)
-        save_json(self.path, self.items)
+        updated = self.items + [item]
+        save_json(self.path, updated)
+        self.items = updated
         return item
 
     def forget(self, item_id: str) -> None:
@@ -66,6 +68,16 @@ class MemoryStore:
             raise ValueError("Không tìm thấy điều cần quên.")
         save_json(self.path, kept)
         self.items = kept
+
+    def edit(self, item_id: str, text: str) -> None:
+        text = text.strip()
+        if not text or len(text) > 500:
+            raise ValueError("Điều cần nhớ phải dài từ 1 đến 500 ký tự.")
+        if not any(item.get("id") == item_id for item in self.items):
+            raise ValueError("Không tìm thấy điều cần sửa.")
+        updated = [{**item, "text": text} if item.get("id") == item_id else item for item in self.items]
+        save_json(self.path, updated)
+        self.items = updated
 
     def prompt(self) -> str:
         return "\n".join(f"- {item['text']}" for item in self.items)
@@ -77,7 +89,8 @@ class ChatStore:
         data = load_json(path, [])
         if not isinstance(data, list):
             raise ValueError("Lịch sử trò chuyện không đúng định dạng.")
-        self.messages = [m for m in data if m.get("role") in {"user", "assistant"} and isinstance(m.get("content"), str)]
+        self.messages = [m for m in data if isinstance(m, dict) and m.get("role") in {"user", "assistant"}
+                         and isinstance(m.get("content"), str)]
 
     def append(self, role: str, content: str) -> None:
         if role not in {"user", "assistant"}:
@@ -89,3 +102,84 @@ class ChatStore:
     def clear(self) -> None:
         save_json(self.path, [])
         self.messages = []
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+class ConversationStore:
+    """A small collection of local conversations; imports the original chat once."""
+
+    def __init__(self, path: Path, legacy_path: Path | None = None):
+        self.path = path
+        if path.exists():
+            data = load_json(path, [])
+            if not isinstance(data, list):
+                raise ValueError("Danh sách cuộc trò chuyện không đúng định dạng.")
+            self.items = data
+        else:
+            self.items = []
+            if legacy_path and legacy_path.exists():
+                messages = ChatStore(legacy_path).messages
+                if messages:
+                    self.items = [self._item("Cuộc trò chuyện trước đây", messages)]
+                    save_json(self.path, self.items)
+        self._validate()
+
+    @staticmethod
+    def _item(title: str, messages: list[dict] | None = None) -> dict:
+        stamp = _now()
+        return {"id": uuid.uuid4().hex, "title": title, "created_at": stamp,
+                "updated_at": stamp, "messages": messages or []}
+
+    def _validate(self) -> None:
+        for item in self.items:
+            if not isinstance(item, dict) or not isinstance(item.get("id"), str) or not isinstance(item.get("messages"), list):
+                raise ValueError("Một cuộc trò chuyện đã lưu không đúng định dạng.")
+            if any(not isinstance(m, dict) or m.get("role") not in {"user", "assistant"}
+                   or not isinstance(m.get("content"), str) for m in item["messages"]):
+                raise ValueError("Tin nhắn đã lưu không đúng định dạng.")
+
+    def get(self, chat_id: str) -> dict:
+        for item in self.items:
+            if item["id"] == chat_id:
+                return item
+        raise ValueError("Không tìm thấy cuộc trò chuyện.")
+
+    def new(self) -> dict:
+        item = self._item("Cuộc trò chuyện mới")
+        updated = [item] + self.items
+        save_json(self.path, updated)
+        self.items = updated
+        return item
+
+    def append(self, chat_id: str, role: str, content: str) -> None:
+        if role not in {"user", "assistant"} or not isinstance(content, str):
+            raise ValueError("Tin nhắn không hợp lệ.")
+        item = self.get(chat_id)
+        messages = item["messages"] + [{"role": role, "content": content}]
+        title = item.get("title", "Cuộc trò chuyện mới")
+        if role == "user" and not any(m["role"] == "user" for m in item["messages"]):
+            title = " ".join(content.split())[:48] or title
+        changed = {**item, "title": title, "updated_at": _now(), "messages": messages}
+        updated = [changed] + [other for other in self.items if other["id"] != chat_id]
+        save_json(self.path, updated)
+        self.items = updated
+
+    def rename(self, chat_id: str, title: str) -> None:
+        title = " ".join(title.split())[:80]
+        if not title:
+            raise ValueError("Tên cuộc trò chuyện không được để trống.")
+        if not any(item["id"] == chat_id for item in self.items):
+            raise ValueError("Không tìm thấy cuộc trò chuyện.")
+        updated = [{**item, "title": title} if item["id"] == chat_id else item for item in self.items]
+        save_json(self.path, updated)
+        self.items = updated
+
+    def delete(self, chat_id: str) -> None:
+        updated = [item for item in self.items if item["id"] != chat_id]
+        if len(updated) == len(self.items):
+            raise ValueError("Không tìm thấy cuộc trò chuyện.")
+        save_json(self.path, updated)
+        self.items = updated

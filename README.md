@@ -1,49 +1,43 @@
 # Mira — trợ lý AI cá nhân trên máy tính
 
-Mira là bản đầu tiên của trợ lý cá nhân có tính cách nữ, giao diện trò chuyện bằng tiếng Việt, giúp xem và sửa file văn bản hoặc code trong **thư mục bạn chọn**. Bạn có thể dạy Mira những điều cần ghi nhớ và xóa chúng bất cứ lúc nào.
+Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Việt qua mô hình Ollama chạy trên máy bạn. Bạn có thể nhờ Mira giải thích, viết code, tìm/đọc file, kiểm tra cú pháp Python và đề xuất sửa file trong thư mục bạn chọn. Tên gọi và cách xưng hô của Mira có thể chỉnh trong **Mô hình & cài đặt**.
 
-## Cài trên Windows
+## Chạy Mira trên Windows
 
-1. Cài **Python 3.11 trở lên** từ [python.org](https://www.python.org/downloads/) và bật tùy chọn `Add python.exe to PATH` khi cài. Python trên Windows thường có sẵn Tkinter.
-2. Cài [Ollama cho Windows](https://ollama.com/download/windows), sau đó mở Ollama. Ollama hiện yêu cầu Windows 10 22H2 trở lên; cần ít nhất khoảng 4 GB cho ứng dụng và thêm dung lượng cho mô hình. `qwen3:4b` có dung lượng tải khoảng 2,5 GB.
-3. Mở PowerShell và tải một mô hình có hỗ trợ gọi công cụ:
+1. Cài [Python 3.11+](https://www.python.org/downloads/) và chọn **Add python.exe to PATH** trong trình cài đặt.
+2. Cài [Ollama cho Windows](https://ollama.com/download/windows) và mở Ollama.
+3. Mở PowerShell, chạy `ollama pull qwen3:4b` và đợi tải xong. Chọn mô hình khác có hỗ trợ gọi công cụ nếu muốn.
+4. Giải nén ZIP, nhấn đúp **`start_windows.bat`**. Không cần `pip install` cho bản cơ bản.
+5. Màn hình mở thẳng vào chat: ô **NHẮN MIRA** màu sáng nằm ngay dưới vùng hội thoại. Nhập câu hỏi rồi bấm **Gửi** hoặc Enter. **Shift+Enter** xuống dòng. Thanh trạng thái phía trên cho biết Ollama đã sẵn sàng chưa; bấm **Cách cài** nếu cần.
 
-   ```powershell
-   ollama pull qwen3:4b
-   ```
+Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 
-4. Giải nén dự án, nhấn đúp **`start_windows.bat`**. Nếu máy không nhận lệnh `py`, mở PowerShell tại thư mục dự án và chạy `python run_mira.py`.
-5. Nhập lời nhắn để trò chuyện. Bấm **Chọn thư mục** để Mira có thể đọc/tìm và đề xuất sửa file trong thư mục đó. Gửi bằng nút **Gửi** hoặc `Ctrl+Enter`.
+## Các việc thường làm
 
-Không cần `pip install`: ứng dụng chỉ dùng thư viện chuẩn Python. Mô hình được tải riêng bởi Ollama; dung lượng và tốc độ phụ thuộc vào mô hình cũng như cấu hình máy. Bạn có thể đổi tên mô hình trong giao diện sau khi tải mô hình khác có hỗ trợ công cụ.
+| Việc | Cách dùng |
+| --- | --- |
+| Trò chuyện | Nhập ở **NHẮN MIRA**, bấm Gửi. Lỗi kết nối có nút **Thử gửi lại**. |
+| Giữ nhiều cuộc trò chuyện | Bấm **+ Cuộc trò chuyện mới**; chọn lịch sử ở cột trái. Có thể đổi tên, xóa hoặc xuất cuộc trò chuyện hiện tại ra `.txt`. |
+| Làm việc với code/file | Bấm **Chọn thư mục làm việc**. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
+| Sửa file | Mira hiển thị diff đầy đủ. Chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi. |
+| Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
+| Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ. Đây là ghi nhớ đưa vào các lượt chat, không huấn luyện lại mô hình. |
+| Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **Đính kèm ảnh**, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
 
-## Mira có thể làm gì?
+Nếu bạn đã dùng bản đầu, lịch sử trong `conversation.json` sẽ được nhập tự động vào mục **Cuộc trò chuyện trước đây**. Bộ nhớ cũ vẫn được giữ.
 
-- Trò chuyện, giải thích, gợi ý sửa lỗi và viết code.
-- Liệt kê, tìm nội dung và đọc file UTF-8 trong thư mục đã chọn.
-- Đề xuất tạo hoặc sửa file: hiện **toàn bộ diff** để bạn chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi.
-- **Dạy Mira**: thêm tối đa 50 điều (mỗi điều tối đa 500 ký tự), xem và quên từng điều. Những điều này được đưa vào ngữ cảnh mỗi lần trò chuyện; đây là **bộ nhớ cá nhân**, chưa phải huấn luyện lại trọng số mô hình.
-- Lưu 40 tin nhắn gần đây trên máy. **Chat mới** xóa lịch sử trò chuyện hiện tại, không xóa bộ nhớ đã dạy.
+## Quyền truy cập và giới hạn
 
-Ví dụ: “Xem `src/app.py` và giải thích lỗi”, “Tìm nơi dùng `login` trong dự án này”, “Sửa `index.html` cho dễ đọc trên điện thoại”.
+- Mira kết nối với Ollama qua `127.0.0.1:11434`. Nội dung chat, bộ nhớ, những file được Mira đọc và ảnh bạn chủ động đính kèm sẽ được gửi tới mô hình đã chọn. Nếu chọn mô hình cloud trong Ollama, cách xử lý dữ liệu phụ thuộc dịch vụ mô hình đó.
+- Chỉ các file trong thư mục do bạn chọn mới được đọc/tìm/sửa. Mira từ chối đường dẫn ra ngoài, symlink, một số file thường chứa thông tin đăng nhập và thư mục sinh tự động (`.git`, `node_modules`, `.venv`...). File đọc tối đa 64 KiB, file sửa tối đa 128 KiB, văn bản UTF-8. Mỗi lần ghi đều phải được bạn duyệt.
+- Ứng dụng không tự chạy lệnh, điều khiển chuột, đọc màn hình liên tục hay nghe microphone. Để Mira xem ảnh, bạn cần chọn ảnh thủ công và dùng mô hình có hỗ trợ ảnh. Code và lời khuyên do AI tạo ra có thể sai; hãy xem diff trước khi ghi.
+- Cài đặt, hội thoại, bộ nhớ và bản sao file cũ nằm ở `%LOCALAPPDATA%\Mira` trên Windows (hoặc `~/.local/share/Mira` trên Linux); không có trong ZIP hay repo. Bản sao nằm trong `backups` và có thể được chép về vị trí cũ để phục hồi.
 
-## Giới hạn và quyền riêng tư
-
-- Bản này chưa nhìn màn hình, điều khiển chuột/bàn phím, chạy lệnh, duyệt web hoặc trò chuyện bằng giọng nói. Các khả năng đó có thể bổ sung sau theo quyền bạn chọn.
-- Mira chỉ gửi câu hỏi, bộ nhớ và phần file được đọc tới **Ollama tại `127.0.0.1:11434` trên chính máy này**. Ứng dụng không có tài khoản hay API key. Hãy dùng mô hình đã tải về để chạy cục bộ; việc chọn mô hình cloud trong Ollama sẽ theo cơ chế riêng của Ollama.
-- Mira từ chối đường dẫn ngoài thư mục đã chọn, symlink, file thông tin đăng nhập phổ biến (`.env`, `.pem`, `.key`, v.v.) và thư mục sinh tự động như `node_modules` và `.git`. Chỉ sửa file UTF-8 tối đa 128 KiB; đọc file tối đa 64 KiB. Không có công cụ xóa file hoặc chạy lệnh.
-- Lịch sử, bộ nhớ, cài đặt và bản sao file cũ nằm ở `%LOCALAPPDATA%\Mira` trên Windows (hoặc `~/.local/share/Mira` trên Linux). Chúng không được đưa vào repo GitHub. Bản sao ở thư mục `backups`; có thể phục hồi bằng cách chép nội dung bản sao về đường dẫn gốc.
-- Phản hồi và mã AI tạo ra có thể sai. Hãy xem diff trước khi duyệt và kiểm tra lại dự án sau khi sửa.
-
-## Chạy và kiểm thử cho người phát triển
+## Dành cho người phát triển
 
 ```bash
 python run_mira.py
 python -m unittest discover -s tests -v
 ```
 
-Kiến trúc: `mira/agent.py` trao đổi với Ollama và giới hạn vòng gọi công cụ; `mira/workspace.py` kiểm soát đường dẫn, phê duyệt và sao lưu; `mira/storage.py` lưu bộ nhớ/lịch sử; `mira/gui.py` chứa giao diện.
-
-### Hướng phát triển tiếp
-
-Chế độ giọng nói với giọng nữ do bạn chọn, xem ảnh màn hình theo yêu cầu, chạy kiểm thử code sau khi bạn duyệt lệnh, hỗ trợ nhiều loại file, và tùy chọn mô hình cloud nếu máy yếu. Mỗi quyền mới cần có nút bật và phạm vi rõ ràng.
+`mira/gui.py` chứa giao diện; `mira/agent.py` gọi Ollama và giới hạn công cụ; `mira/workspace.py` kiểm tra đường dẫn, diff và sao lưu; `mira/storage.py` lưu dữ liệu cục bộ. Không yêu cầu thư viện Python ngoài standard library cho tính năng hiện có.
