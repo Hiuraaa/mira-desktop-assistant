@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 from .agent import Agent
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
+from .speech import SpeechPlayer
 from .storage import ConversationStore, MemoryStore, data_dir, load_json, save_json
 from .workspace import Workspace, WorkspaceError
 
@@ -45,6 +46,7 @@ class MiraApp(tk.Tk):
         self.preferences = PreferenceStore(self.path / "preferences.json")
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
         self.agent = Agent()
+        self.speaker = SpeechPlayer()
         self.busy = False
         self.closed = False
         self.pending_approval: threading.Event | None = None
@@ -59,8 +61,14 @@ class MiraApp(tk.Tk):
         self.name_var = tk.StringVar(value=settings.get("name") or "Mira")
         self.model_var = tk.StringVar(value=settings.get("model") or "qwen3:4b")
         self.fast_var = tk.BooleanVar(value=settings.get("fast_mode", True))
+        self.deep_var = tk.BooleanVar(value=settings.get("deep_thinking", False))
+        self.voice_auto_var = tk.BooleanVar(value=settings.get("voice_auto", False))
+        self.playful_var = tk.BooleanVar(value=settings.get("persona_mode", "playful") == "playful")
+        self.persona_note = str(settings.get("persona_note") or "")[:400]
         self.stream_chat_id: str | None = None
         self.stream_text = ""
+        self.avatar_state = "idle"
+        self.avatar_tick = 0
         self.folder_var = tk.StringVar(value="Chưa chọn thư mục • Mira chỉ trò chuyện")
         self.health_var = tk.StringVar(value="Đang kiểm tra Ollama…")
         self.status_var = tk.StringVar(value="Sẵn sàng • Enter để gửi, Shift+Enter để xuống dòng")
@@ -85,6 +93,7 @@ class MiraApp(tk.Tk):
         self._render_chat()
         self.protocol("WM_DELETE_WINDOW", self._close)
         self.after(200, self._check_ollama)
+        self.after(280, self._animate_avatar)
 
     def _button(self, parent, label, command, *, primary=False, subtle=False):
         return tk.Button(parent, text=label, command=command, relief="flat", cursor="hand2",
@@ -128,8 +137,10 @@ class MiraApp(tk.Tk):
             row=6, column=0, sticky="ew", pady=3)
         self._button(sidebar, "⚙  Mô hình & cài đặt", self._settings_dialog, subtle=True).grid(
             row=7, column=0, sticky="ew", pady=3)
+        self._button(sidebar, "🚀  Mô hình mạnh & tốc độ", self._model_lab_dialog, subtle=True).grid(
+            row=8, column=0, sticky="ew", pady=3)
         self._button(sidebar, "↥  Xuất cuộc trò chuyện", self._export_chat, subtle=True).grid(
-            row=8, column=0, sticky="ew", pady=(3, 0))
+            row=9, column=0, sticky="ew", pady=(3, 0))
 
         main = tk.Frame(self, bg=BG, padx=23, pady=16)
         main.grid(row=0, column=1, sticky="nsew")
@@ -137,10 +148,19 @@ class MiraApp(tk.Tk):
         main.grid_rowconfigure(4, weight=1)
         head = tk.Frame(main, bg=BG)
         head.grid(row=0, column=0, sticky="ew")
-        tk.Label(head, textvariable=self.title_var, bg=BG, fg=TEXT,
+        self.avatar = tk.Canvas(head, width=50, height=52, bg=BG, highlightthickness=0)
+        self.avatar.pack(side="left", padx=(0, 11))
+        self.avatar_ring = self.avatar.create_oval(2, 2, 48, 48, fill=SIDE, outline=ACCENT, width=2)
+        self.avatar.create_oval(10, 13, 18, 21, fill=ACCENT, outline="")
+        self.avatar.create_oval(31, 13, 39, 21, fill=ACCENT, outline="")
+        self.avatar_mouth = self.avatar.create_arc(17, 22, 34, 36, start=180, extent=180,
+                                                   style="arc", outline=ACCENT, width=2)
+        titles = tk.Frame(head, bg=BG)
+        titles.pack(side="left", fill="x", expand=True)
+        tk.Label(titles, textvariable=self.title_var, bg=BG, fg=TEXT,
                  font=("Segoe UI", 19, "bold"), anchor="w").pack(fill="x")
-        tk.Label(head, textvariable=self.folder_var, bg=BG, fg=MUTED,
-                 font=("Segoe UI", 10), anchor="w", wraplength=570).pack(fill="x", pady=(2, 12))
+        tk.Label(titles, textvariable=self.folder_var, bg=BG, fg=MUTED,
+                 font=("Segoe UI", 10), anchor="w", wraplength=520).pack(fill="x", pady=(2, 12))
 
         health = tk.Frame(main, bg=PANEL, padx=13, pady=7)
         health.grid(row=1, column=0, sticky="ew", pady=(0, 11))
@@ -154,6 +174,10 @@ class MiraApp(tk.Tk):
         project_actions.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         self._button(project_actions, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 8))
         self._button(project_actions, "▶ Chạy kiểm thử", self._run_tests).pack(side="left")
+        tk.Checkbutton(project_actions, text="✦ Mira hoạt bát", variable=self.playful_var,
+                       command=self._toggle_persona, bg=BG, fg=ACCENT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Segoe UI", 10, "bold"), cursor="hand2").pack(side="right")
 
         self.starters = tk.Frame(main, bg=BG)
         self.starters.grid(row=3, column=0, sticky="ew", pady=(0, 10))
@@ -209,6 +233,10 @@ class MiraApp(tk.Tk):
         tk.Label(status, textvariable=self.status_var, bg=BG, fg=MUTED,
                  anchor="w", font=("Segoe UI", 9)).pack(side="left", fill="x", expand=True)
         self.retry_button = self._button(status, "Thử gửi lại", self._retry)
+        self.listen_button = self._button(status, "🔊 Nghe", self._listen_last)
+        self.listen_button.pack(side="right", padx=(8, 0))
+        if not self.speaker.available():
+            self.listen_button.configure(state="disabled")
         self.input.focus_set()
 
     def _save_settings(self):
@@ -216,13 +244,30 @@ class MiraApp(tk.Tk):
             "name": self.name_var.get().strip()[:40] or "Mira",
             "model": self.model_var.get().strip(),
             "fast_mode": self.fast_var.get(),
+            "deep_thinking": self.deep_var.get(),
+            "voice_auto": self.voice_auto_var.get(),
+            "persona_mode": "playful" if self.playful_var.get() else "standard",
+            "persona_note": self.persona_note,
             "folder": str(self.workspace.root) if self.workspace else "",
             "active_chat_id": self.active_chat_id,
             "current_chat": self.active_chat_id,
         })
 
+    def _toggle_persona(self):
+        try:
+            self._save_settings()
+            self.status_var.set("Đã bật Mira hoạt bát." if self.playful_var.get()
+                                else "Đã chuyển sang Mira thường.")
+        except OSError as exc:
+            messagebox.showerror("Không lưu được tính cách", str(exc))
+
     def _close(self):
         self.closed = True
+        self.speaker.stop()
+        if getattr(self, "model_download_proc", None):
+            process = self.model_download_proc
+            if process.poll() is None:
+                process.terminate()
         if self.pending_approval:
             self.pending_approval.set()
         try:
@@ -230,6 +275,19 @@ class MiraApp(tk.Tk):
         except OSError:
             pass
         self.destroy()
+
+    def _animate_avatar(self):
+        if self.closed:
+            return
+        self.avatar_tick += 1
+        active = self.avatar_state != "idle"
+        color = ACCENT if self.avatar_state != "thinking" or self.avatar_tick % 2 else "#a9caff"
+        self.avatar.itemconfigure(self.avatar_ring, outline=color, width=3 if active else 2)
+        if self.avatar_state == "speaking" and self.avatar_tick % 2:
+            self.avatar.coords(self.avatar_mouth, 20, 24, 30, 37)
+        else:
+            self.avatar.coords(self.avatar_mouth, 17, 22, 34, 36)
+        self.after(280, self._animate_avatar)
 
     def _refresh_chat_list(self):
         self.chat_list.delete(0, "end")
@@ -287,6 +345,9 @@ class MiraApp(tk.Tk):
         if selected and selected[0] < len(self.chats.items):
             selected_id = self.chats.items[selected[0]]["id"]
             if selected_id != self.active_chat_id:
+                self.speaker.stop()
+                self.listen_button.configure(text="🔊 Nghe")
+                self.avatar_state = "thinking" if self.busy else "idle"
                 self.active_chat_id = selected_id
                 self._render_chat()
                 if self.retry_text and self.retry_chat_id == selected_id:
@@ -297,6 +358,9 @@ class MiraApp(tk.Tk):
 
     def _new_chat(self):
         try:
+            self.speaker.stop()
+            self.listen_button.configure(text="🔊 Nghe")
+            self.avatar_state = "thinking" if self.busy else "idle"
             self.active_chat_id = self.chats.new()["id"]
             self.retry_button.pack_forget()
             self._refresh_chat_list()
@@ -487,10 +551,185 @@ class MiraApp(tk.Tk):
                      self._button)).pack(side="right")
         reload()
 
+    def _model_lab_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mô hình mạnh & tốc độ")
+        dialog.geometry("660x450")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Chọn sức mạnh theo đúng máy bạn", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=20, pady=(17, 8))
+        description = ("qwen3.5:9b (tải ~6,6 GB): giỏi hơn cho trò chuyện, code và ảnh, "
+                       "nhưng có thể chậm nếu máy thiếu RAM/VRAM. qwen3.5:4b (tải ~3,4 GB) "
+                       "nhẹ hơn. Các mô hình chạy cục bộ và không cần API trả phí.")
+        tk.Label(dialog, text=description, bg=BG, fg=MUTED, wraplength=600,
+                 justify="left").pack(anchor="w", padx=20)
+        current = tk.StringVar(value="Mô hình đang chọn: " + self.model_var.get())
+        tk.Label(dialog, textvariable=current, bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(12, 4))
+        result = tk.Text(dialog, height=7, state="disabled", wrap="word", bg=PANEL,
+                         fg=TEXT, relief="flat", padx=10, pady=8, font=("Segoe UI", 10))
+        result.pack(fill="both", expand=True, padx=20, pady=(4, 8))
+
+        def show(line):
+            if not self.closed and dialog.winfo_exists():
+                result.configure(state="normal")
+                result.insert("end", line + "\n")
+                result.see("end")
+                result.configure(state="disabled")
+
+        def set_model(model_name):
+            if model_name not in self.available_models:
+                show("Chưa có " + model_name + ". Hãy tải trước rồi bấm Kiểm tra lại.")
+                return
+            self.model_var.set(model_name)
+            try:
+                self._save_settings()
+            except OSError as exc:
+                show("Không lưu được mô hình: " + str(exc))
+                return
+            current.set("Mô hình đang chọn: " + model_name)
+            self._check_ollama()
+            show("Đã chọn " + model_name + " cho những tin nhắn tiếp theo.")
+
+        def download(model_name):
+            if getattr(self, "model_downloading", False):
+                show("Mô hình vẫn đang tải. Hãy chờ hoàn tất.")
+                return
+            if not shutil.which("ollama"):
+                show("Không tìm thấy lệnh ollama. Mở PowerShell và chạy: ollama pull " + model_name)
+                return
+            self.model_downloading = True
+            size = "~6,6 GB" if model_name == "qwen3.5:9b" else "~3,4 GB"
+            show(f"Đang tải {model_name} ({size}); quá trình có thể mất nhiều phút.")
+
+            def run():
+                try:
+                    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+                    process = subprocess.Popen(["ollama", "pull", model_name],
+                                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                               text=True, encoding="utf-8", errors="replace",
+                                               creationflags=flags)
+                    self.model_download_proc = process
+                    output, _ = process.communicate()
+                    error = None if process.returncode == 0 else (output or "Ollama tải thất bại.")[-350:]
+                except OSError as exc:
+                    error = str(exc)
+                finally:
+                    self.model_download_proc = None
+
+                def done():
+                    self.model_downloading = False
+                    if self.closed or not dialog.winfo_exists():
+                        return
+                    if error:
+                        show("Không tải được: " + error)
+                    else:
+                        show("Đã tải xong. Đang cập nhật danh sách mô hình…")
+                        self._check_ollama(lambda models: set_model(model_name)
+                                           if model_name in models and dialog.winfo_exists() else None)
+
+                try:
+                    self.after(0, done)
+                except RuntimeError:
+                    pass
+
+            threading.Thread(target=run, daemon=True).start()
+
+        def compare():
+            if getattr(self, "model_downloading", False):
+                show("Hãy đợi tải mô hình xong rồi đo để tránh ảnh hưởng kết quả.")
+                return
+            if getattr(self, "model_benchmarking", False):
+                show("Phép đo trước vẫn đang chạy.")
+                return
+            self.model_benchmarking = True
+            show("Đang đo; mỗi mô hình sẽ tạo một câu trả lời ngắn trên máy bạn…")
+
+            def run():
+                try:
+                    installed = self.agent.client.list_models()
+                    candidates = [m for m in ("qwen3:4b", "qwen3.5:4b", "qwen3.5:9b", self.model_var.get())
+                                  if m in installed]
+                    candidates = list(dict.fromkeys(candidates))
+                    if not candidates:
+                        raise RuntimeError("Chưa cài mô hình nào. Hãy tải một mô hình trước.")
+                    for name in candidates:
+                        metric = self.agent.client.benchmark(name)
+                        line = (f"{name}: {metric['tokens_per_second']:.1f} token/giây; "
+                                f"tải {metric['load_seconds']:.1f}s; tổng {metric['total_seconds']:.1f}s")
+                        self.after(0, show, line)
+                    self.after(0, show, "Tốc độ này đo một câu ngắn; câu dài và sửa file sẽ khác.")
+                except (RuntimeError, OSError, ValueError) as exc:
+                    try:
+                        self.after(0, show, "Không đo được: " + str(exc))
+                    except RuntimeError:
+                        pass
+                finally:
+                    self.model_benchmarking = False
+
+            threading.Thread(target=run, daemon=True).start()
+
+        buttons = tk.Frame(dialog, bg=BG)
+        buttons.pack(fill="x", padx=20, pady=(0, 8))
+        self._button(buttons, "Tải 9B", lambda: download("qwen3.5:9b"), primary=True).pack(side="left")
+        self._button(buttons, "Tải 4B", lambda: download("qwen3.5:4b")).pack(side="left", padx=5)
+        self._button(buttons, "Chọn 9B", lambda: set_model("qwen3.5:9b")).pack(side="left")
+        self._button(buttons, "Đo tốc độ", compare).pack(side="left", padx=5)
+        tk.Checkbutton(dialog, text="Suy luận sâu khi hỏi việc khó (câu trả lời có thể chậm hơn)",
+                       variable=self.deep_var, command=self._set_deep_thinking, bg=BG, fg=TEXT,
+                       selectcolor=PANEL, activebackground=BG, activeforeground=TEXT).pack(
+                           anchor="w", padx=20, pady=(0, 12))
+        self._check_ollama()
+
+    def _set_deep_thinking(self):
+        try:
+            self._save_settings()
+            self.status_var.set("Đã bật suy luận sâu; phản hồi có thể chậm hơn." if self.deep_var.get()
+                                else "Đã tắt suy luận sâu để ưu tiên phản hồi nhanh.")
+        except OSError as exc:
+            messagebox.showerror("Không lưu được cài đặt", str(exc))
+
+    def _listen_last(self):
+        if self.busy:
+            self.status_var.set("Hãy đợi Mira trả lời xong rồi bấm Nghe.")
+            return
+        if self.avatar_state == "speaking":
+            self.speaker.stop()
+            self.listen_button.configure(text="🔊 Nghe")
+            self.avatar_state = "idle"
+            self.status_var.set("Đã dừng giọng đọc.")
+            return
+        messages = self.chats.get(self.active_chat_id)["messages"]
+        answer = next((item["content"] for item in reversed(messages)
+                       if item["role"] == "assistant"), "")
+        if not answer:
+            self.status_var.set("Hãy đợi Mira trả lời rồi bấm Nghe.")
+        else:
+            self._speak(answer)
+
+    def _speak(self, text):
+        try:
+            self.avatar_state = "speaking"
+            self.status_var.set("Mira đang đọc bằng giọng Windows đã cài…")
+            self.speaker.speak(text, lambda error: self.after(0, self._voice_done, error))
+            self.listen_button.configure(text="■ Dừng đọc")
+        except (OSError, RuntimeError, ValueError) as exc:
+            self.avatar_state = "idle"
+            self.listen_button.configure(text="🔊 Nghe")
+            self.status_var.set(str(exc))
+
+    def _voice_done(self, error):
+        if not self.closed:
+            self.avatar_state = "thinking" if self.busy else "idle"
+            self.listen_button.configure(text="🔊 Nghe")
+            if error:
+                self.status_var.set(error)
+
     def _settings_dialog(self):
         dialog = tk.Toplevel(self)
         dialog.title("Mô hình & cài đặt")
-        dialog.geometry("560x450")
+        dialog.geometry("600x640")
         dialog.configure(bg=BG)
         dialog.transient(self)
         tk.Label(dialog, text="Thiết lập Mira", bg=BG, fg=TEXT,
@@ -510,6 +749,24 @@ class MiraApp(tk.Tk):
                        activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(12, 0))
         tk.Label(dialog, text="Muốn nhanh hơn nữa: chạy ollama pull qwen3:1.7b rồi chọn mô hình đó.",
                  bg=BG, fg=MUTED, wraplength=510, justify="left").pack(anchor="w", padx=20)
+        dialog_voice = tk.BooleanVar(value=self.voice_auto_var.get())
+        tk.Checkbutton(dialog, text="Tự đọc câu trả lời bằng giọng Windows (miễn phí, xử lý trên máy)",
+                       variable=dialog_voice, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(7, 0))
+        tk.Label(dialog, text="Tính cách Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(14, 3))
+        dialog_playful = tk.BooleanVar(value=self.playful_var.get())
+        tk.Checkbutton(dialog, text="Hoạt bát: tò mò, ứng biến và đùa đúng lúc",
+                       variable=dialog_playful, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Mira vẫn ưu tiên trả lời chính xác khi làm việc hoặc khi bạn cần sự nghiêm túc.",
+                 bg=BG, fg=MUTED, wraplength=530, justify="left").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Thêm nét tính cách bạn thích (tùy chọn)",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(10, 2))
+        persona_note = tk.Text(dialog, height=3, wrap="word", font=("Segoe UI", 10),
+                               bg="#f7fbff", fg=INK, padx=7, pady=5)
+        persona_note.insert("1.0", self.persona_note)
+        persona_note.pack(fill="x", padx=20)
 
         def save():
             chosen_name = name.get().strip()
@@ -519,6 +776,9 @@ class MiraApp(tk.Tk):
                 return
             self.name_var.set(chosen_name[:40])
             self.model_var.set(chosen_model)
+            self.playful_var.set(dialog_playful.get())
+            self.voice_auto_var.set(dialog_voice.get())
+            self.persona_note = persona_note.get("1.0", "end").strip()[:400]
             try:
                 self._save_settings()
             except OSError as exc:
@@ -556,8 +816,9 @@ class MiraApp(tk.Tk):
                  font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
         instructions = ("1. Cài Ollama cho Windows rồi mở Ollama.\n\n"
                         "2. Mở PowerShell và chạy:\n    ollama pull qwen3:4b\n"
+                        "   Mô hình mạnh hơn: ollama pull qwen3.5:9b\n"
                         "   Máy yếu, ưu tiên tốc độ: ollama pull qwen3:1.7b\n"
-                        "   Để Mira xem ảnh: ollama pull qwen3-vl:4b\n\n"
+                        "   Ảnh và công cụ: qwen3.5:9b hoặc qwen3-vl:4b\n\n"
                         "3. Quay lại Mira và bấm Kiểm tra lại.\n"
                         "   Ô NHẮN MIRA ở dưới cùng là nơi bắt đầu chat.")
         tk.Label(dialog, text=instructions, bg=BG, fg=TEXT, justify="left",
@@ -738,11 +999,18 @@ class MiraApp(tk.Tk):
         self.retry_image_name = None
         self.retry_button.pack_forget()
         self.send_button.configure(state="disabled")
-        self.status_var.set("Mira đang trả lời… Nội dung sẽ xuất hiện dần.")
+        self.speaker.stop()
+        self.listen_button.configure(text="🔊 Nghe")
+        self.avatar_state = "thinking"
+        think = self.deep_var.get()
+        self.status_var.set("Mira đang suy luận sâu…" if think else
+                            "Mira đang trả lời… Nội dung sẽ xuất hiện dần.")
         workspace = self.workspace
         memories = ("Bộ sở thích:\n" + self.preferences.prompt_for(text) +
                     "\nGhi nhớ được chọn:\n" + (self.memories.prompt_for(text) or "(chưa có)"))
         fast = self.fast_var.get()
+        persona = "playful" if self.playful_var.get() else "standard"
+        persona_note = self.persona_note
         self.stream_chat_id = chat_id
         self.stream_text = ""
         chunks = queue.SimpleQueue()
@@ -758,6 +1026,8 @@ class MiraApp(tk.Tk):
                     break
             if parts:
                 self.stream_text += "".join(parts)
+                self.avatar_state = "speaking"
+                self.status_var.set("Mira đang tạo câu trả lời…")
                 if self.active_chat_id == chat_id:
                     self._show_pending(name)
 
@@ -779,7 +1049,8 @@ class MiraApp(tk.Tk):
             try:
                 answer = self.agent.respond(text, history, model, name, memories, workspace,
                                             self._approve_edit, report, image=image,
-                                            on_token=chunks.put, fast=fast)
+                                            on_token=chunks.put, fast=fast, persona=persona,
+                                            persona_note=persona_note, think=think)
                 error = None
             except Exception as exc:
                 answer, error = "", str(exc)
@@ -789,6 +1060,7 @@ class MiraApp(tk.Tk):
                 self._remove_pending()
                 self.stream_chat_id = None
                 self.stream_text = ""
+                self.avatar_state = "idle"
                 if error:
                     self.retry_text = text
                     self.retry_chat_id = chat_id
@@ -810,6 +1082,8 @@ class MiraApp(tk.Tk):
                     self.status_var.set(f"Sẵn sàng • trả lời trong {time.monotonic() - started:.1f} giây")
                 self.busy = False
                 self.send_button.configure(state="normal")
+                if not error and self.voice_auto_var.get() and self.active_chat_id == chat_id:
+                    self._speak(answer)
                 self.input.focus_set()
 
             try:

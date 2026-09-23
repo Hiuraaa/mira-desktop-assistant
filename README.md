@@ -19,6 +19,14 @@ Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên
 - Muốn giảm tải thêm, chạy `ollama pull qwen3:1.7b`, mở **Mô hình & cài đặt**, chọn `qwen3:1.7b`. Mô hình nhỏ hơn thường nhanh hơn nhưng có thể kém chính xác khi sửa code phức tạp. `qwen3:1.7b` chỉ dùng văn bản, không nhìn ảnh; khi gửi ảnh hãy chọn mô hình vision như `qwen3-vl:4b`.
 - Mira giữ mô hình sẵn trong Ollama trong khoảng **15 phút** giữa các yêu cầu để tránh tải lại; điều này có thể giữ RAM đang dùng. Đây là tham số `keep_alive`, không chạy Mira trên cloud.
 
+### Mô hình mạnh hơn và tốc độ thật trên máy
+
+Trong thanh bên chọn **🚀 Mô hình mạnh & tốc độ**. Bạn có thể bấm **Tải 9B** để cài `qwen3.5:9b` miễn phí bằng Ollama (khoảng 6,6 GB dữ liệu tải), hoặc **Tải 4B** cho `qwen3.5:4b` (khoảng 3,4 GB). Sau khi tải, Mira tự chọn mô hình đó. Cả hai nhận ảnh và có khả năng gọi công cụ. Nếu muốn cài thủ công, dùng `ollama pull qwen3.5:9b` trong PowerShell rồi chọn trong **Mô hình & cài đặt**.
+
+Nút **Đo tốc độ** cho các mô hình đã cài tạo một câu ngắn trên chính máy bạn, hiển thị token/giây, thời gian tải mô hình và tổng thời gian. Đây chỉ là phép đo một lượt ngắn, không đo chất lượng câu trả lời. Mô hình 9B có thể hiểu và làm việc phức tạp tốt hơn nhưng **không bảo đảm nhanh hơn** 4B; nếu vượt dung lượng RAM/VRAM thì sẽ chậm rõ rệt. Chọn mô hình theo kết quả đo và mức độ hữu ích của câu trả lời thực tế.
+
+**Suy luận sâu** trong cửa sổ này cho phép mô hình có hỗ trợ suy luận dành thêm thời gian cho việc khó. Chế độ này tắt mặc định để chat nhanh; bật lên có thể khiến Mira chờ lâu trước khi hiện chữ đầu tiên. Chế độ **Ưu tiên tốc độ** và **Suy luận sâu** được lưu riêng.
+
 ## Các việc thường làm
 
 | Việc | Cách dùng |
@@ -30,6 +38,8 @@ Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên
 | Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
 | Chạy kiểm thử dự án | Bấm **Chạy kiểm thử**. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
 | Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
+| Chọn tính cách | Bật/tắt **✦ Mira hoạt bát** ngay phía trên hội thoại. Trong **Mô hình & cài đặt**, bạn có thể thêm vài dòng mô tả cách nói chuyện bạn thích rồi bấm **Lưu**. |
+| Nghe Mira trả lời | Sau một câu trả lời, bấm **🔊 Nghe**; bấm lại để dừng. Trong **Mô hình & cài đặt**, có thể bật tự đọc sau mỗi câu trả lời. Windows dùng giọng đã cài trên máy; chất lượng tiếng Việt phụ thuộc vào giọng có sẵn. |
 | Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **Đính kèm ảnh**, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
 
 Nếu bạn đã dùng bản đầu, lịch sử trong `conversation.json` sẽ được nhập tự động vào mục **Cuộc trò chuyện trước đây**. Bộ nhớ cũ vẫn được giữ.
@@ -40,11 +50,18 @@ Mira có sẵn `mira/preferences_starter.json` gồm các quy tắc trả lời 
 
 Mira chỉ chọn **tối đa hai ví dụ liên quan** cho mỗi câu hỏi và giới hạn số ghi nhớ gửi vào mô hình để giữ tốc độ. Các ví dụ giúp định hướng cách trả lời; chúng **không huấn luyện lại trọng số**. Mọi dữ liệu sở thích nằm trên máy và không cần tài khoản hay API trả phí khi dùng mô hình Ollama cục bộ đã tải. Nếu chọn mô hình cloud qua Ollama, chi phí và xử lý dữ liệu sẽ theo dịch vụ đó.
 
+### Chế độ Mira hoạt bát
+
+Chế độ này được bật mặc định sau khi cập nhật; bấm **✦ Mira hoạt bát** để chuyển nhanh sang giọng trợ lý thông thường. Mira trò chuyện tò mò, ứng biến và đôi lúc đùa nhẹ, nhưng vẫn đi thẳng vào việc và giữ thái độ nghiêm túc khi cần. Bạn có thể nhập sở thích riêng trong **Mô hình & cài đặt** và chỉnh các ví dụ trong **Bộ sở thích**; thay đổi chỉ áp dụng cho những tin nhắn gửi sau đó. Lựa chọn và ghi chú tính cách được giữ trong `%LOCALAPPDATA%\Mira\settings.json` qua các lần nâng cấp.
+
+Đây là một tính cách hội thoại lấy cảm hứng từ AI VTuber, không phải bản sao mô hình, giọng nói hay nhân vật của Neuro-sama. Mira có gương mặt tối giản riêng, đổi nét khi đang tạo chữ/đọc thành tiếng; giọng đọc tùy chọn dùng giọng Windows trên máy. Mira chưa nhận lời nói từ microphone, xem màn hình liên tục, chơi game hay tự phát tin khi bạn không nhắn. Các thao tác file vẫn cần quyền và xác nhận như trước.
+
 ## Quyền truy cập và giới hạn
 
 - Mira kết nối với Ollama qua `127.0.0.1:11434`. Nội dung chat, bộ nhớ, những file được Mira đọc và ảnh bạn chủ động đính kèm sẽ được gửi tới mô hình đã chọn. Nếu chọn mô hình cloud trong Ollama, cách xử lý dữ liệu phụ thuộc dịch vụ mô hình đó.
 - Chỉ các file trong thư mục do bạn chọn mới được đọc/tìm/sửa. Mira từ chối đường dẫn ra ngoài, symlink, một số file thường chứa thông tin đăng nhập và thư mục sinh tự động (`.git`, `node_modules`, `.venv`...). File đọc tối đa 64 KiB, file sửa tối đa 128 KiB, văn bản UTF-8. Mỗi lần ghi đều phải được bạn duyệt.
 - Mira không tự chạy lệnh do mô hình đề xuất. Nút **Chạy kiểm thử** chỉ chạy lệnh đã hiển thị sau khi bạn xác nhận; kiểm thử có thể thực thi code của dự án. Ứng dụng chưa điều khiển chuột, đọc màn hình liên tục hay nghe microphone. Để Mira xem ảnh, bạn cần chọn ảnh thủ công và dùng mô hình có hỗ trợ ảnh. Code và lời khuyên do AI tạo ra có thể sai; hãy xem diff trước khi ghi.
+- Giọng đọc chỉ hoạt động trên Windows có PowerShell và giọng System.Speech cài sẵn. Văn bản trả lời được đưa vào bộ tổng hợp giọng nói cục bộ; mã code, liên kết và đoạn quá dài được lược bớt khi đọc. Ứng dụng không tự bật micro và không dùng dịch vụ TTS trả phí.
 - Cài đặt, hội thoại, bộ nhớ và bản sao file cũ nằm ở `%LOCALAPPDATA%\Mira` trên Windows (hoặc `~/.local/share/Mira` trên Linux); không có trong ZIP hay repo. Bản sao nằm trong `backups` và có thể được chép về vị trí cũ để phục hồi.
 
 ## Dành cho người phát triển
