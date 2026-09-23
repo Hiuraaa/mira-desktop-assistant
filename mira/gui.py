@@ -162,14 +162,15 @@ class MiraApp(tk.Tk):
         self._label(composer, "NHẬP TIN NHẮN CHO MIRA", 9, ACCENT, True, INPUT).pack(anchor="w")
         input_row = tk.Frame(composer, bg=INPUT)
         input_row.pack(fill="x", pady=(5, 0))
-        self.input = tk.Text(input_row, height=3, wrap="word", bg=INPUT, fg=TEXT,
+        input_row.grid_columnconfigure(0, weight=1)
+        self.input = tk.Text(input_row, height=3, width=1, wrap="word", bg=INPUT, fg=TEXT,
                              insertbackground=TEXT, relief="flat", borderwidth=0,
                              font=("Segoe UI", 12), undo=True)
-        self.input.pack(side="left", fill="both", expand=True)
+        self.input.grid(row=0, column=0, sticky="ew")
         self.input.bind("<Return>", self._on_enter)
         self.input.bind("<Control-Return>", self._send)
         self.send_button = self._button(input_row, "Gửi  ➤", self._send, True)
-        self.send_button.pack(side="right", padx=(12, 0), anchor="se")
+        self.send_button.grid(row=0, column=1, sticky="se", padx=(12, 0))
         self.hint_label = self._label(main, "Enter để gửi  ·  Shift+Enter để xuống dòng", 9, MUTED)
         self.status_label = self._label(main, "", 9, MUTED, textvariable=self.status_var)
         # Reserve bottom space first. The chat transcript shrinks on small displays;
