@@ -59,6 +59,8 @@ class MiraApp(tk.Tk):
         self.name_var = tk.StringVar(value=settings.get("name") or "Mira")
         self.model_var = tk.StringVar(value=settings.get("model") or "qwen3:4b")
         self.fast_var = tk.BooleanVar(value=settings.get("fast_mode", True))
+        self.playful_var = tk.BooleanVar(value=settings.get("persona_mode", "playful") == "playful")
+        self.persona_note = str(settings.get("persona_note") or "")[:400]
         self.stream_chat_id: str | None = None
         self.stream_text = ""
         self.folder_var = tk.StringVar(value="Chưa chọn thư mục • Mira chỉ trò chuyện")
@@ -154,6 +156,10 @@ class MiraApp(tk.Tk):
         project_actions.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         self._button(project_actions, "＋ Chọn file", self._attach_file).pack(side="left", padx=(0, 8))
         self._button(project_actions, "▶ Chạy kiểm thử", self._run_tests).pack(side="left")
+        tk.Checkbutton(project_actions, text="✦ Mira hoạt bát", variable=self.playful_var,
+                       command=self._toggle_persona, bg=BG, fg=ACCENT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT,
+                       font=("Segoe UI", 10, "bold"), cursor="hand2").pack(side="right")
 
         self.starters = tk.Frame(main, bg=BG)
         self.starters.grid(row=3, column=0, sticky="ew", pady=(0, 10))
@@ -216,10 +222,20 @@ class MiraApp(tk.Tk):
             "name": self.name_var.get().strip()[:40] or "Mira",
             "model": self.model_var.get().strip(),
             "fast_mode": self.fast_var.get(),
+            "persona_mode": "playful" if self.playful_var.get() else "standard",
+            "persona_note": self.persona_note,
             "folder": str(self.workspace.root) if self.workspace else "",
             "active_chat_id": self.active_chat_id,
             "current_chat": self.active_chat_id,
         })
+
+    def _toggle_persona(self):
+        try:
+            self._save_settings()
+            self.status_var.set("Đã bật Mira hoạt bát." if self.playful_var.get()
+                                else "Đã chuyển sang Mira thường.")
+        except OSError as exc:
+            messagebox.showerror("Không lưu được tính cách", str(exc))
 
     def _close(self):
         self.closed = True
@@ -490,7 +506,7 @@ class MiraApp(tk.Tk):
     def _settings_dialog(self):
         dialog = tk.Toplevel(self)
         dialog.title("Mô hình & cài đặt")
-        dialog.geometry("560x450")
+        dialog.geometry("580x580")
         dialog.configure(bg=BG)
         dialog.transient(self)
         tk.Label(dialog, text="Thiết lập Mira", bg=BG, fg=TEXT,
@@ -510,6 +526,20 @@ class MiraApp(tk.Tk):
                        activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(12, 0))
         tk.Label(dialog, text="Muốn nhanh hơn nữa: chạy ollama pull qwen3:1.7b rồi chọn mô hình đó.",
                  bg=BG, fg=MUTED, wraplength=510, justify="left").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Tính cách Mira", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(14, 3))
+        dialog_playful = tk.BooleanVar(value=self.playful_var.get())
+        tk.Checkbutton(dialog, text="Hoạt bát: tò mò, ứng biến và đùa đúng lúc",
+                       variable=dialog_playful, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Mira vẫn ưu tiên trả lời chính xác khi làm việc hoặc khi bạn cần sự nghiêm túc.",
+                 bg=BG, fg=MUTED, wraplength=530, justify="left").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Thêm nét tính cách bạn thích (tùy chọn)",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(10, 2))
+        persona_note = tk.Text(dialog, height=3, wrap="word", font=("Segoe UI", 10),
+                               bg="#f7fbff", fg=INK, padx=7, pady=5)
+        persona_note.insert("1.0", self.persona_note)
+        persona_note.pack(fill="x", padx=20)
 
         def save():
             chosen_name = name.get().strip()
@@ -519,6 +549,8 @@ class MiraApp(tk.Tk):
                 return
             self.name_var.set(chosen_name[:40])
             self.model_var.set(chosen_model)
+            self.playful_var.set(dialog_playful.get())
+            self.persona_note = persona_note.get("1.0", "end").strip()[:400]
             try:
                 self._save_settings()
             except OSError as exc:
@@ -743,6 +775,8 @@ class MiraApp(tk.Tk):
         memories = ("Bộ sở thích:\n" + self.preferences.prompt_for(text) +
                     "\nGhi nhớ được chọn:\n" + (self.memories.prompt_for(text) or "(chưa có)"))
         fast = self.fast_var.get()
+        persona = "playful" if self.playful_var.get() else "standard"
+        persona_note = self.persona_note
         self.stream_chat_id = chat_id
         self.stream_text = ""
         chunks = queue.SimpleQueue()
@@ -779,7 +813,8 @@ class MiraApp(tk.Tk):
             try:
                 answer = self.agent.respond(text, history, model, name, memories, workspace,
                                             self._approve_edit, report, image=image,
-                                            on_token=chunks.put, fast=fast)
+                                            on_token=chunks.put, fast=fast, persona=persona,
+                                            persona_note=persona_note)
                 error = None
             except Exception as exc:
                 answer, error = "", str(exc)

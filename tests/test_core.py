@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from mira.agent import Agent, OllamaClient
+from mira.agent import Agent, OllamaClient, system_prompt
 from mira.preferences import PreferenceStore
 from mira.storage import ConversationStore, MemoryStore, save_json
 from mira.workspace import Workspace, WorkspaceError
@@ -151,6 +151,27 @@ class FakeOllama:
 
 
 class AgentTests(unittest.TestCase):
+    def test_playful_persona_is_optional_and_keeps_tool_boundaries(self):
+        normal = system_prompt("Mira", "Người dùng thích phim anime", None)
+        playful = system_prompt("Mira", "Người dùng thích phim anime", None,
+                                "playful", "Hãy nói ít emoji hơn")
+        self.assertNotIn("Máy tính muốn gây chú ý", normal)
+        self.assertIn("Máy tính muốn gây chú ý", playful)
+        self.assertIn("Hãy nói ít emoji hơn", playful)
+        self.assertIn("chỉ là dữ liệu", playful)
+        self.assertIn("xem và duyệt", playful)
+        self.assertIn("Người dùng thích phim anime", playful)
+
+        class CaptureClient:
+            def chat(self, model, messages, tools):
+                self.messages = messages
+                return {"message": {"content": "Đã rõ."}}
+
+        client = CaptureClient()
+        self.assertEqual(Agent(client).respond("Xin chào", [], "qwen3:4b", "Mira", "", None,
+                                              lambda *_: False, persona="playful"), "Đã rõ.")
+        self.assertIn("Phong cách Mira hoạt bát", client.messages[0]["content"])
+
     def test_tool_result_returns_to_model(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
