@@ -1,0 +1,54 @@
+name: Verify and package Mira
+
+on: [push, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax
+        run: python -m compileall -q mira tests run_mira.py
+      - name: Run tests on Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          if command -v xvfb-run >/dev/null; then
+            xvfb-run -a python -m unittest discover -s tests -v
+          else
+            python -m unittest discover -s tests -v
+          fi
+      - name: Run tests on Windows
+        if: runner.os == 'Windows'
+        run: python -m unittest discover -s tests -v
+
+  package:
+    name: Make downloadable ZIP
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Mira-Desktop-Assistant-v2
+          path: |
+            .gitignore
+            README.md
+            run_mira.py
+            start_windows.bat
+            mira/
+            tests/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30

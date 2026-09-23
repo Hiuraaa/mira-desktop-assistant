@@ -1,49 +1,45 @@
 # Mira — trợ lý AI cá nhân trên máy tính
 
-Mira là bản đầu tiên của trợ lý cá nhân có tính cách nữ, giao diện trò chuyện bằng tiếng Việt, giúp xem và sửa file văn bản hoặc code trong **thư mục bạn chọn**. Bạn có thể dạy Mira những điều cần ghi nhớ và xóa chúng bất cứ lúc nào.
+Mira có giao diện chat rõ ràng ngay khi mở: ô **NHẬP TIN NHẮN CHO MIRA** nằm ở dưới khung hội thoại, nút **Gửi ➤** ở bên phải. Mira có tính cách nữ và trò chuyện bằng tiếng Việt. Bạn có thể đổi tên trợ lý trong Cài đặt.
 
-## Cài trên Windows
+## Cài đặt trên Windows
 
-1. Cài **Python 3.11 trở lên** từ [python.org](https://www.python.org/downloads/) và bật tùy chọn `Add python.exe to PATH` khi cài. Python trên Windows thường có sẵn Tkinter.
-2. Cài [Ollama cho Windows](https://ollama.com/download/windows), sau đó mở Ollama. Ollama hiện yêu cầu Windows 10 22H2 trở lên; cần ít nhất khoảng 4 GB cho ứng dụng và thêm dung lượng cho mô hình. `qwen3:4b` có dung lượng tải khoảng 2,5 GB.
-3. Mở PowerShell và tải một mô hình có hỗ trợ gọi công cụ:
+1. Cài Python 3.11 trở lên từ https://www.python.org/downloads/ (chọn “Add python.exe to PATH” nếu trình cài đặt có tùy chọn này).
+2. Cài Ollama từ https://ollama.com/download/windows và mở Ollama. Ollama yêu cầu Windows 10 22H2 trở lên.
+3. Mở PowerShell, chạy lệnh sau để tải mô hình (khoảng 2,5 GB):
 
-   ```powershell
-   ollama pull qwen3:4b
-   ```
+       ollama pull qwen3:4b
 
-4. Giải nén dự án, nhấn đúp **`start_windows.bat`**. Nếu máy không nhận lệnh `py`, mở PowerShell tại thư mục dự án và chạy `python run_mira.py`.
-5. Nhập lời nhắn để trò chuyện. Bấm **Chọn thư mục** để Mira có thể đọc/tìm và đề xuất sửa file trong thư mục đó. Gửi bằng nút **Gửi** hoặc `Ctrl+Enter`.
+4. Tải mã nguồn từ repo GitHub (Code → Download ZIP), giải nén và nhấn đúp **start_windows.bat**.
+5. Trong cửa sổ Mira, gõ vào ô chat ở dưới cùng và nhấn **Enter** hoặc nút **Gửi ➤**. Dùng **Shift+Enter** để xuống dòng.
 
-Không cần `pip install`: ứng dụng chỉ dùng thư viện chuẩn Python. Mô hình được tải riêng bởi Ollama; dung lượng và tốc độ phụ thuộc vào mô hình cũng như cấu hình máy. Bạn có thể đổi tên mô hình trong giao diện sau khi tải mô hình khác có hỗ trợ công cụ.
+Nếu cửa sổ không mở, mở PowerShell trong thư mục đã giải nén và chạy: `py -3 run_mira.py`. Cửa sổ lệnh sẽ hiển thị lỗi. Mira chỉ dùng thư viện chuẩn Python, không cần pip install.
 
-## Mira có thể làm gì?
+## Các phần chính
 
-- Trò chuyện, giải thích, gợi ý sửa lỗi và viết code.
-- Liệt kê, tìm nội dung và đọc file UTF-8 trong thư mục đã chọn.
-- Đề xuất tạo hoặc sửa file: hiện **toàn bộ diff** để bạn chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi.
-- **Dạy Mira**: thêm tối đa 50 điều (mỗi điều tối đa 500 ký tự), xem và quên từng điều. Những điều này được đưa vào ngữ cảnh mỗi lần trò chuyện; đây là **bộ nhớ cá nhân**, chưa phải huấn luyện lại trọng số mô hình.
-- Lưu 40 tin nhắn gần đây trên máy. **Chat mới** xóa lịch sử trò chuyện hiện tại, không xóa bộ nhớ đã dạy.
+- **Trò chuyện:** khung chat và ô nhập luôn hiện; lịch sử từng cuộc trò chuyện ở cột trái. Tạo mới, đổi tên, xóa hoặc xuất chat thành Markdown.
+- **Mô hình:** Mira tự kiểm tra Ollama khi mở, báo rõ trường hợp chưa mở Ollama hoặc chưa tải mô hình. Nút **Mô hình & cài đặt** cho phép đổi tên và chọn mô hình đã cài.
+- **Bộ nhớ:** nút **Bộ nhớ của Mira** để thêm, sửa, quên các điều bạn muốn Mira nhớ. Đây là bộ nhớ đưa vào ngữ cảnh, **chưa phải fine-tune/training lại trọng số**.
+- **File & code:** bấm **Chọn thư mục** để cấp phạm vi file. Bấm **Chọn file** để đưa đường dẫn vào câu hỏi. Mira có thể tìm/đọc file UTF-8 và đề xuất sửa; mọi thay đổi phải qua cửa sổ xem diff và bấm **Duyệt và ghi file**. Bản cũ được sao lưu.
+- **Kiểm thử:** nút **Chạy kiểm thử** phát hiện dự án Python có thư mục tests hoặc dự án npm có package.json. Ứng dụng cho bạn xem và xác nhận lệnh trước khi chạy code trong thư mục dự án.
 
-Ví dụ: “Xem `src/app.py` và giải thích lỗi”, “Tìm nơi dùng `login` trong dự án này”, “Sửa `index.html` cho dễ đọc trên điện thoại”.
+Lịch sử chat của bản cũ được tự đưa sang danh sách hội thoại mới ở lần mở đầu; bộ nhớ và cài đặt cũ được giữ. Dữ liệu cá nhân nằm ở %LOCALAPPDATA%\Mira; mã nguồn trên GitHub không chứa dữ liệu chat của bạn.
 
-## Giới hạn và quyền riêng tư
+## Phím và tình huống thường gặp
 
-- Bản này chưa nhìn màn hình, điều khiển chuột/bàn phím, chạy lệnh, duyệt web hoặc trò chuyện bằng giọng nói. Các khả năng đó có thể bổ sung sau theo quyền bạn chọn.
-- Mira chỉ gửi câu hỏi, bộ nhớ và phần file được đọc tới **Ollama tại `127.0.0.1:11434` trên chính máy này**. Ứng dụng không có tài khoản hay API key. Hãy dùng mô hình đã tải về để chạy cục bộ; việc chọn mô hình cloud trong Ollama sẽ theo cơ chế riêng của Ollama.
-- Mira từ chối đường dẫn ngoài thư mục đã chọn, symlink, file thông tin đăng nhập phổ biến (`.env`, `.pem`, `.key`, v.v.) và thư mục sinh tự động như `node_modules` và `.git`. Chỉ sửa file UTF-8 tối đa 128 KiB; đọc file tối đa 64 KiB. Không có công cụ xóa file hoặc chạy lệnh.
-- Lịch sử, bộ nhớ, cài đặt và bản sao file cũ nằm ở `%LOCALAPPDATA%\Mira` trên Windows (hoặc `~/.local/share/Mira` trên Linux). Chúng không được đưa vào repo GitHub. Bản sao ở thư mục `backups`; có thể phục hồi bằng cách chép nội dung bản sao về đường dẫn gốc.
-- Phản hồi và mã AI tạo ra có thể sai. Hãy xem diff trước khi duyệt và kiểm tra lại dự án sau khi sửa.
+| Việc cần làm | Cách thực hiện |
+| --- | --- |
+| Gửi tin nhắn | Enter hoặc Gửi ➤ |
+| Xuống dòng | Shift+Enter |
+| Chọn file để hỏi | Chọn thư mục trước, rồi Chọn file |
+| Trợ lý báo chưa kết nối | Mở Ollama, bấm Kiểm tra lại |
+| Trợ lý báo thiếu mô hình | Chạy ollama pull qwen3:4b, bấm Kiểm tra lại |
+| Xem lại file đã sửa | Xem thư mục backups trong %LOCALAPPDATA%\Mira |
 
-## Chạy và kiểm thử cho người phát triển
+## Giới hạn và quyền
 
-```bash
-python run_mira.py
-python -m unittest discover -s tests -v
-```
+Mira chỉ gọi Ollama trên máy tại 127.0.0.1:11434 khi bạn dùng mô hình cục bộ. Thư mục được chọn là phạm vi duy nhất để AI đọc và đề xuất sửa file; file bí mật thường gặp, symlink và thư mục sinh tự động bị loại trừ. Bản này chưa có nhận diện màn hình, giọng nói, thao tác chuột/bàn phím tự động hoặc truy cập web. Các khả năng đó cần thiết kế quyền riêng khi bổ sung.
 
-Kiến trúc: `mira/agent.py` trao đổi với Ollama và giới hạn vòng gọi công cụ; `mira/workspace.py` kiểm soát đường dẫn, phê duyệt và sao lưu; `mira/storage.py` lưu bộ nhớ/lịch sử; `mira/gui.py` chứa giao diện.
+Để tự kiểm tra mã nguồn:
 
-### Hướng phát triển tiếp
-
-Chế độ giọng nói với giọng nữ do bạn chọn, xem ảnh màn hình theo yêu cầu, chạy kiểm thử code sau khi bạn duyệt lệnh, hỗ trợ nhiều loại file, và tùy chọn mô hình cloud nếu máy yếu. Mỗi quyền mới cần có nút bật và phạm vi rõ ràng.
+    python -m unittest discover -s tests -v
