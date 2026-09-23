@@ -65,10 +65,16 @@ class VisibleComposerTests(unittest.TestCase):
                         app.update()
                         self.assertTrue(app.input.winfo_ismapped())
                         self.assertTrue(app.send_button.winfo_ismapped())
+                        self.assertTrue(app.avatar.winfo_ismapped())
                         self.assertGreater(app.input.winfo_height(), 30)
                         self.assertLessEqual(app.input.winfo_rooty() + app.input.winfo_height(),
                                              app.winfo_rooty() + app.winfo_height())
                         self.assertIn("Gửi", app.send_button.cget("text"))
+                        app._model_lab_dialog()
+                        app.update()
+                        self.assertTrue(any(child.title() == "Mô hình mạnh & tốc độ"
+                                            for child in app.winfo_children()
+                                            if isinstance(child, tk.Toplevel)))
                     finally:
                         app._close()
         except tk.TclError as exc:

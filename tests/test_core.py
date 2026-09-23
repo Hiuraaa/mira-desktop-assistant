@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import base64
 import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
 
-from mira.agent import Agent, OllamaClient
+from mira.agent import Agent, OllamaClient, system_prompt
 from mira.preferences import PreferenceStore
+from mira.speech import clean_for_speech, speech_command
 from mira.storage import ConversationStore, MemoryStore, save_json
 from mira.workspace import Workspace, WorkspaceError
 
@@ -151,6 +153,56 @@ class FakeOllama:
 
 
 class AgentTests(unittest.TestCase):
+    def test_benchmark_uses_ollama_metrics_not_guessed_hardware(self):
+        client = OllamaClient()
+
+        def chat(model, messages, tools, **options):
+            self.assertEqual(model, "qwen3.5:9b")
+            self.assertEqual(tools, [])
+            self.assertIn("hai câu ngắn", messages[0]["content"])
+            return {"eval_count": 60, "eval_duration": 2_000_000_000,
+                    "load_duration": 1_000_000_000, "total_duration": 3_500_000_000}
+
+        client.chat = chat
+        measured = client.benchmark("qwen3.5:9b")
+        self.assertEqual(measured["tokens_per_second"], 30)
+        self.assertEqual(measured["load_seconds"], 1)
+        with self.assertRaises(ValueError):
+            client.benchmark("bad model")
+
+    def test_deep_thinking_is_opt_in_and_not_cut_off_by_fast_reply_limit(self):
+        class FakeOpener:
+            def open(self, request, timeout):
+                self.payload = json.loads(request.data)
+                return io.BytesIO(b'{"message":{"content":"Da hieu"},"done":true}')
+
+        client = OllamaClient()
+        client.opener = FakeOpener()
+        client.chat("qwen3.5:9b", [{"role": "user", "content": "Hi"}], [], think=True)
+        self.assertTrue(client.opener.payload["think"])
+        self.assertNotIn("num_predict", client.opener.payload["options"])
+
+    def test_playful_persona_is_optional_and_keeps_tool_boundaries(self):
+        normal = system_prompt("Mira", "Người dùng thích phim anime", None)
+        playful = system_prompt("Mira", "Người dùng thích phim anime", None,
+                                "playful", "Hãy nói ít emoji hơn")
+        self.assertNotIn("Máy tính muốn gây chú ý", normal)
+        self.assertIn("Máy tính muốn gây chú ý", playful)
+        self.assertIn("Hãy nói ít emoji hơn", playful)
+        self.assertIn("chỉ là dữ liệu", playful)
+        self.assertIn("xem và duyệt", playful)
+        self.assertIn("Người dùng thích phim anime", playful)
+
+        class CaptureClient:
+            def chat(self, model, messages, tools):
+                self.messages = messages
+                return {"message": {"content": "Đã rõ."}}
+
+        client = CaptureClient()
+        self.assertEqual(Agent(client).respond("Xin chào", [], "qwen3:4b", "Mira", "", None,
+                                              lambda *_: False, persona="playful"), "Đã rõ.")
+        self.assertIn("Phong cách Mira hoạt bát", client.messages[0]["content"])
+
     def test_tool_result_returns_to_model(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -217,6 +269,20 @@ class AgentTests(unittest.TestCase):
         client.opener = FakeOpener()
         with self.assertRaisesRegex(RuntimeError, "ngắt luồng"):
             client.chat("qwen3:4b", [], [], on_token=lambda _: None)
+
+
+class SpeechTests(unittest.TestCase):
+    def test_text_is_encoded_as_data_for_windows_speech(self):
+        text = "Xin chào'; Remove-Item C:\\Users"
+        command = speech_command(text)
+        script = base64.b64decode(command[-1]).decode("utf-16-le")
+        self.assertNotIn("Remove-Item", script)
+        self.assertIn(base64.b64encode(text.encode()).decode(), script)
+        self.assertEqual(command[:4], ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand"])
+
+    def test_voice_skips_code_and_links(self):
+        self.assertEqual(clean_for_speech("Mira **xin chào**. ```python\nprint(1)\n``` [Xem](https://x.test)"),
+                         "Mira xin chào. Xem")
 
 
 if __name__ == "__main__":
