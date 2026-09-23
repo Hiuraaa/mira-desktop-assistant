@@ -49,8 +49,25 @@ Nút **Đo tốc độ** cho các mô hình đã cài tạo một câu ngắn tr
 | Chọn tính cách | Bật/tắt **✦ Mira hoạt bát** ngay phía trên hội thoại. Trong **Mô hình & cài đặt**, bạn có thể thêm vài dòng mô tả cách nói chuyện bạn thích rồi bấm **Lưu**. |
 | Nghe Mira trả lời | Sau một câu trả lời, bấm **🔊 Nghe**; bấm lại để dừng. Trong **Mô hình & cài đặt**, có thể bật tự đọc sau mỗi câu trả lời. Windows dùng giọng đã cài trên máy; chất lượng tiếng Việt phụ thuộc vào giọng có sẵn. |
 | Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **Đính kèm ảnh**, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
+| Trò chuyện từ điện thoại | Bấm **📱 Điện thoại & lịch nhắc** ở thanh bên, làm theo hướng dẫn ghép nối phía dưới. |
+| Đặt lịch nhắc | Bấm **Lịch nhắc** trong mục điện thoại; nhập ngày giờ hoặc nhờ Mira điền bản nháp, kiểm tra rồi bấm **Lưu lịch**. |
 
 Nếu bạn đã dùng bản đầu, lịch sử trong `conversation.json` sẽ được nhập tự động vào mục **Cuộc trò chuyện trước đây**. Bộ nhớ cũ vẫn được giữ.
+
+## Kết nối điện thoại, lịch nhắc và điều khiển máy tính
+
+**Chat với Mira trên điện thoại (Tailscale Personal miễn phí):**
+
+1. Cài [Tailscale](https://tailscale.com/download) trên máy tính Windows và điện thoại Android/iPhone; đăng nhập cùng tài khoản trên cả hai thiết bị. Mira và Ollama cần đang mở trên máy tính; nếu máy yếu, có thể chọn mô hình Ollama Cloud đã đồng ý sử dụng trong Mira.
+2. Trên máy tính mở Mira → **📱 Điện thoại & lịch nhắc** → **Bật / tạo mã mới**. Ghi lại mã 8 chữ số, hiệu lực 5 phút và chỉ dùng một lần.
+3. Mở PowerShell trên máy tính, chạy `tailscale serve --bg 8765`. Tailscale sẽ in ra một địa chỉ `https://...ts.net`; mở địa chỉ đó bằng trình duyệt điện thoại và nhập mã. Nếu chưa hiện địa chỉ, chạy `tailscale serve status`. **Dùng Serve, không dùng Funnel**, vì Funnel công khai ra Internet.
+4. Trên điện thoại có thể chat và mở tab **Lịch nhắc**. Chat điện thoại được lưu riêng trong `%LOCALAPPDATA%\Mira\phone_conversation.json`. Trang điện thoại không có quyền xem/sửa file hoặc chạy lệnh trong máy tính; mô hình cloud vẫn dùng lựa chọn đồng ý đã đặt trên máy tính. Để ngắt, bấm **Ngắt kết nối** trong Mira hoặc đóng Mira; muốn tắt luôn địa chỉ Serve, chạy `tailscale serve --bg 8765 off` trên máy tính.
+
+Mã ghép nối chỉ hiển thị trên máy tính. Kết nối điện thoại sử dụng HTTPS của Tailscale Serve, xác minh danh tính do Tailscale chuyển tới, phiên ghép nối có hạn 12 giờ. Tailscale Personal miễn phí có điều kiện sử dụng và giới hạn của nhà cung cấp; không cần mở cổng router hay đăng ký tên miền. Nếu dùng thiết bị được gắn tag của Tailscale, header danh tính không có và Mira sẽ từ chối; hãy dùng điện thoại đăng nhập cá nhân.
+
+**Lịch nhắc:** Trong Mira trên máy tính chọn **Lịch nhắc**, hoặc trên điện thoại mở tab cùng tên. Có thể tự nhập ngày giờ hoặc viết “Nhắc tôi ngày mai lúc 9 giờ gọi mẹ” rồi bấm **Mira điền biểu mẫu**. Mira chỉ gợi ý; **bạn kiểm tra và bấm Lưu** để tạo một lịch nhắc. Khi Mira đang mở, máy tính báo bằng cửa sổ ở thời điểm đã chọn. Để điện thoại nhắc cả khi máy tính tắt, bấm **Thêm vào lịch điện thoại (.ics)** và nhập tệp đó vào ứng dụng Lịch có hỗ trợ tệp `.ics` và báo thức; đây là một lần nhập thủ công. Sửa hoặc xóa lịch trong Mira không tự cập nhật lịch đã nhập trên điện thoại. Nếu dùng iPhone/Android, cách mở tệp và quyền thông báo tùy ứng dụng lịch bạn chọn. Chưa có lịch lặp lại hoặc đồng bộ Google/Apple Calendar tự động.
+
+**Điều khiển màn hình máy tính từ xa:** Cài [Chrome Remote Desktop](https://remotedesktop.google.com/access) trên máy tính, bật **Truy cập từ xa** và đặt mã PIN theo hướng dẫn của Google. Trên điện thoại mở ứng dụng Chrome Remote Desktop hoặc liên kết **Điều khiển toàn bộ máy tính** trong tab Lịch nhắc, đăng nhập cùng tài khoản Google và chọn máy. Đây là quyền điều khiển màn hình bằng tay của bạn, tách khỏi quyền chat của Mira. Máy tính phải đang bật, không ngủ và có mạng; tính năng này cần tài khoản Google và chưa được tự cài/bật trên máy của bạn.
 
 ## Bộ dữ liệu sở thích miễn phí
 
@@ -70,6 +87,7 @@ Chế độ này được bật mặc định sau khi cập nhật; bấm **✦ 
 - Chỉ các file trong thư mục do bạn chọn mới được đọc/tìm/sửa. Mira từ chối đường dẫn ra ngoài, symlink, một số file thường chứa thông tin đăng nhập và thư mục sinh tự động (`.git`, `node_modules`, `.venv`...). File đọc tối đa 64 KiB, file sửa tối đa 128 KiB, văn bản UTF-8. Mỗi lần ghi đều phải được bạn duyệt.
 - Mira không tự chạy lệnh do mô hình đề xuất. Nút **Chạy kiểm thử** chỉ chạy lệnh đã hiển thị sau khi bạn xác nhận; kiểm thử có thể thực thi code của dự án. Ứng dụng chưa điều khiển chuột, đọc màn hình liên tục hay nghe microphone. Để Mira xem ảnh, bạn cần chọn ảnh thủ công và dùng mô hình có hỗ trợ ảnh. Code và lời khuyên do AI tạo ra có thể sai; hãy xem diff trước khi ghi.
 - Giọng đọc chỉ hoạt động trên Windows có PowerShell và giọng System.Speech cài sẵn. Văn bản trả lời được đưa vào bộ tổng hợp giọng nói cục bộ; mã code, liên kết và đoạn quá dài được lược bớt khi đọc. Ứng dụng không tự bật micro và không dùng dịch vụ TTS trả phí.
+- Giao diện điện thoại chỉ mở khi bạn bật trong Mira, lắng nghe `127.0.0.1:8765` và cần Tailscale Serve, mã ghép nối một lần, cookie phiên cùng xác minh CSRF. Nếu đã ghép nối, người dùng cầm điện thoại hoặc tài khoản có quyền đăng nhập thiết bị đó có thể xem chat điện thoại và lịch nhắc. Không chia sẻ mã, tài khoản Tailscale hoặc thiết bị đã ghép nối.
 - Cài đặt, hội thoại, bộ nhớ và bản sao file cũ nằm ở `%LOCALAPPDATA%\Mira` trên Windows (hoặc `~/.local/share/Mira` trên Linux); không có trong ZIP hay repo. Bản sao nằm trong `backups` và có thể được chép về vị trí cũ để phục hồi.
 
 ## Dành cho người phát triển
@@ -79,4 +97,4 @@ python run_mira.py
 python -m unittest discover -s tests -v
 ```
 
-`mira/gui.py` chứa giao diện; `mira/agent.py` gọi Ollama và giới hạn công cụ; `mira/workspace.py` kiểm tra đường dẫn, diff và sao lưu; `mira/storage.py` lưu dữ liệu cục bộ; `mira/preferences.py` chọn sở thích theo ngữ cảnh. Không yêu cầu thư viện Python ngoài standard library cho tính năng hiện có.
+`mira/gui.py` chứa giao diện; `mira/mobile_server.py` và `mira/phone.html` phục vụ giao diện điện thoại qua loopback; `mira/reminders.py` lưu lịch và xuất `.ics`; `mira/agent.py` gọi Ollama và giới hạn công cụ; `mira/workspace.py` kiểm tra đường dẫn, diff và sao lưu; `mira/storage.py` lưu dữ liệu cục bộ; `mira/preferences.py` chọn sở thích theo ngữ cảnh. Không yêu cầu thư viện Python ngoài standard library cho tính năng hiện có.
