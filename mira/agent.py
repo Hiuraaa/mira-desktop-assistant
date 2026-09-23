@@ -33,6 +33,16 @@ class OllamaClient:
         self.timeout = timeout
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
+    def list_models(self) -> list[str]:
+        """Check that the local Ollama service is reachable and list installed models."""
+        request = urllib.request.Request("http://127.0.0.1:11434/api/tags")
+        try:
+            with self.opener.open(request, timeout=4) as response:
+                data = json.load(response)
+            return [m["name"] for m in data.get("models", []) if isinstance(m.get("name"), str)]
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            raise RuntimeError("Chưa kết nối được Ollama. Hãy mở Ollama rồi nhấn Kiểm tra lại.") from exc
+
     def chat(self, model: str, messages: list[dict], tools: list[dict]) -> dict:
         request = urllib.request.Request(
             "http://127.0.0.1:11434/api/chat",
