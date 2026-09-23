@@ -51,16 +51,46 @@ class OllamaClient:
         except (ValueError, KeyError, TypeError) as exc:
             raise RuntimeError("Ollama trả dữ liệu không hợp lệ. Hãy khởi động lại Ollama.") from exc
 
-    def chat(self, model: str, messages: list[dict], tools: list[dict]) -> dict:
+    def chat(self, model: str, messages: list[dict], tools: list[dict],
+             on_token: Callable[[str], None] | None = None, fast: bool = True) -> dict:
+        options = {"num_ctx": (8192 if tools else 4096) if fast else (16384 if tools else 8192)}
+        # Keep a modest reply limit for ordinary chat. Tool arguments can contain file contents.
+        if fast and not tools:
+            options["num_predict"] = 400
         request = urllib.request.Request(
             "http://127.0.0.1:11434/api/chat",
-            data=json.dumps({"model": model, "messages": messages, "tools": tools, "stream": False, "think": False}).encode("utf-8"),
+            data=json.dumps({"model": model, "messages": messages, "tools": tools,
+                             "stream": on_token is not None, "think": False,
+                             "keep_alive": "15m", "options": options}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
-                return json.load(response)
+                if on_token is None:
+                    return json.load(response)
+                content, thinking, calls = [], [], []
+                done = False
+                for line in response:
+                    if not line.strip():
+                        continue
+                    chunk = json.loads(line)
+                    if chunk.get("error"):
+                        raise RuntimeError(f"Ollama báo lỗi: {chunk['error']}")
+                    message = chunk.get("message") or {}
+                    piece = message.get("content") or ""
+                    if piece:
+                        content.append(piece)
+                        on_token(piece)
+                    if message.get("thinking"):
+                        thinking.append(message["thinking"])
+                    calls.extend(message.get("tool_calls") or [])
+                    if chunk.get("done"):
+                        done = True
+                if not done:
+                    raise RuntimeError("Ollama ngắt luồng trả lời giữa chừng. Hãy thử gửi lại.")
+                return {"message": {"role": "assistant", "content": "".join(content),
+                                    "thinking": "".join(thinking), "tool_calls": calls}}
         except urllib.error.HTTPError as exc:
             details = exc.read(500).decode("utf-8", errors="replace")
             if exc.code == 404:
@@ -89,11 +119,20 @@ class Agent:
                 memories: str, workspace: Workspace | None,
                 approve: Callable[[str, str, str], bool],
                 report: Callable[[str], None] = lambda text: None,
-                image: bytes | None = None) -> str:
+                image: bytes | None = None, on_token: Callable[[str], None] | None = None,
+                fast: bool = True) -> str:
         if not model or any(c.isspace() for c in model):
             raise ValueError("Tên mô hình Ollama không hợp lệ.")
         messages = [{"role": "system", "content": system_prompt(name, memories, str(workspace.root) if workspace else None)}]
-        messages.extend(history[-18:])
+        budget = 5500 if fast else 14000
+        recent = []
+        for item in reversed(history[-18:]):
+            content = item.get("content", "")
+            if not isinstance(content, str) or len(content) > budget:
+                break
+            recent.append(item)
+            budget -= len(content)
+        messages.extend(reversed(recent))
         user_message = {"role": "user", "content": user_text}
         if image is not None:
             user_message["images"] = [base64.b64encode(image).decode("ascii")]
@@ -101,12 +140,16 @@ class Agent:
         tools = TOOLS if workspace else []
         tool_count = 0
         for _ in range(8):
-            raw = self.client.chat(model, messages, tools)
+            if on_token is None:
+                raw = self.client.chat(model, messages, tools)
+            else:
+                raw = self.client.chat(model, messages, tools, on_token=on_token, fast=fast)
             message = raw.get("message", {})
             calls = message.get("tool_calls") or []
             if not calls:
                 return message.get("content", "").strip() or "Mình chưa tạo được câu trả lời. Bạn thử nói rõ hơn nhé."
-            messages.append({"role": "assistant", "content": message.get("content", ""), "tool_calls": calls})
+            messages.append({"role": "assistant", "content": message.get("content", ""),
+                             "thinking": message.get("thinking", ""), "tool_calls": calls})
             for call in calls:
                 tool_count += 1
                 function = call.get("function", {})

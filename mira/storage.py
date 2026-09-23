@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -81,6 +82,24 @@ class MemoryStore:
 
     def prompt(self) -> str:
         return "\n".join(f"- {item['text']}" for item in self.items)
+
+    def prompt_for(self, request: str) -> str:
+        """Keep relevant and recent memories short for local inference."""
+        words = set(re.findall(r"\w{3,}", request.casefold()))
+        matching = [item for item in reversed(self.items)
+                    if words & set(re.findall(r"\w{3,}", item["text"].casefold()))]
+        selected = matching[:5]
+        selected_ids = {item["id"] for item in selected}
+        selected.extend(item for item in reversed(self.items) if item["id"] not in selected_ids)
+        lines = []
+        for item in selected:
+            line = "- " + item["text"]
+            if len("\n".join(lines)) + len(line) > 1200:
+                break
+            lines.append(line)
+            if len(lines) == 8:
+                break
+        return "\n".join(lines)
 
 
 class ChatStore:

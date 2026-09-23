@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from mira.agent import Agent, OllamaClient
+from mira.preferences import PreferenceStore
 from mira.storage import ConversationStore, MemoryStore, save_json
 from mira.workspace import Workspace, WorkspaceError
 
@@ -78,6 +81,39 @@ class MemoryTests(unittest.TestCase):
             store.edit(item["id"], "Mới")
             self.assertEqual(MemoryStore(file).items[0]["text"], "Mới")
 
+    def test_only_relevant_and_recent_memories_enter_prompt(self):
+        with tempfile.TemporaryDirectory() as folder:
+            store = MemoryStore(Path(folder) / "memories.json")
+            for number in range(15):
+                store.add(f"Điều chung số {number}")
+            store.add("Khi dịch hãy dùng tiếng Anh tự nhiên")
+            prompt = store.prompt_for("Dịch đoạn này")
+            self.assertIn("tiếng Anh tự nhiên", prompt)
+            self.assertLessEqual(len(prompt), 1200)
+
+
+class PreferenceTests(unittest.TestCase):
+    def test_starter_matches_request_and_user_edits_persist(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / "preferences.json"
+            store = PreferenceStore(file)
+            self.assertIn("Just to be clear", store.prompt_for("Dịch câu này sang tiếng Anh"))
+            self.assertNotIn("Just to be clear", store.prompt_for("Kiểm tra code Python"))
+            store.add_rule("Ưu tiên ví dụ đơn giản")
+            store.add_example("anime", "Gợi ý anime", "Nêu thể loại và phụ đề")
+            self.assertIn("phụ đề", PreferenceStore(file).prompt_for("Gợi ý anime"))
+            self.assertIn("ví dụ đơn giản", PreferenceStore(file).prompt_for("Xin chào"))
+
+    def test_invalid_import_does_not_replace_preferences(self):
+        with tempfile.TemporaryDirectory() as folder:
+            base = Path(folder)
+            store = PreferenceStore(base / "preferences.json")
+            invalid = base / "invalid.json"
+            invalid.write_text('{"version": 1, "rules": [], "examples": [{"id": "x"}]}', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                store.replace_from_file(invalid)
+            self.assertIn("miễn phí", PreferenceStore(base / "preferences.json").prompt_for("Xin chào"))
+
 
 class ConversationTests(unittest.TestCase):
     def test_migrate_legacy_and_keep_separate_chats(self):
@@ -138,8 +174,6 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(client.messages[-1]["images"], ["ZmFrZS1pbWFnZQ=="])
 
     def test_model_health_lists_installed_models(self):
-        import io
-
         class FakeOpener:
             def open(self, request, timeout):
                 self.url = request.full_url
@@ -149,6 +183,40 @@ class AgentTests(unittest.TestCase):
         client.opener = FakeOpener()
         self.assertEqual(client.list_models(), ["qwen3:4b"])
         self.assertEqual(client.opener.url, "http://127.0.0.1:11434/api/tags")
+
+    def test_streaming_chat_accumulates_tokens_and_tool_calls(self):
+        class FakeOpener:
+            def open(self, request, timeout):
+                self.payload = json.loads(request.data)
+                chunks = [
+                    {"message": {"content": "Xin "}},
+                    {"message": {"content": "chào", "tool_calls": [
+                        {"function": {"name": "list_files", "arguments": {}}}]}},
+                    {"done": True},
+                ]
+                return io.BytesIO(b"".join(json.dumps(chunk).encode() + b"\n" for chunk in chunks))
+
+        client = OllamaClient()
+        client.opener = FakeOpener()
+        tokens = []
+        result = client.chat("qwen3:4b", [{"role": "user", "content": "Hi"}], [{"type": "function"}],
+                             on_token=tokens.append)
+        self.assertEqual(tokens, ["Xin ", "chào"])
+        self.assertEqual(result["message"]["content"], "Xin chào")
+        self.assertEqual(result["message"]["tool_calls"][0]["function"]["name"], "list_files")
+        self.assertTrue(client.opener.payload["stream"])
+        self.assertEqual(client.opener.payload["keep_alive"], "15m")
+        self.assertEqual(client.opener.payload["options"]["num_ctx"], 8192)
+
+    def test_interrupted_stream_is_not_accepted_as_complete(self):
+        class FakeOpener:
+            def open(self, request, timeout):
+                return io.BytesIO(b'{"message":{"content":"Dang tra loi"}}\n')
+
+        client = OllamaClient()
+        client.opener = FakeOpener()
+        with self.assertRaisesRegex(RuntimeError, "ngắt luồng"):
+            client.chat("qwen3:4b", [], [], on_token=lambda _: None)
 
 
 if __name__ == "__main__":

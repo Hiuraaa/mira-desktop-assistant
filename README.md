@@ -12,6 +12,13 @@ Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Vi
 
 Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 
+### Nếu Mira trả lời chậm
+
+- Bản này **hiển thị nội dung dần** ngay khi Ollama bắt đầu tạo chữ. Thời gian suy luận thật vẫn tùy CPU/GPU và RAM trên máy; lần đầu tải mô hình thường chậm hơn.
+- Trong **Mô hình & cài đặt**, bật **Ưu tiên tốc độ** (mặc định). Mira gửi ít lịch sử và ví dụ phù hợp hơn, dùng ngữ cảnh gọn; những cuộc trò chuyện dài hoặc file code lớn có thể cần tắt chế độ này để giữ thêm ngữ cảnh.
+- Muốn giảm tải thêm, chạy `ollama pull qwen3:1.7b`, mở **Mô hình & cài đặt**, chọn `qwen3:1.7b`. Mô hình nhỏ hơn thường nhanh hơn nhưng có thể kém chính xác khi sửa code phức tạp. `qwen3:1.7b` chỉ dùng văn bản, không nhìn ảnh; khi gửi ảnh hãy chọn mô hình vision như `qwen3-vl:4b`.
+- Mira giữ mô hình sẵn trong Ollama trong khoảng **15 phút** giữa các yêu cầu để tránh tải lại; điều này có thể giữ RAM đang dùng. Đây là tham số `keep_alive`, không chạy Mira trên cloud.
+
 ## Các việc thường làm
 
 | Việc | Cách dùng |
@@ -21,10 +28,16 @@ Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên
 | Làm việc với code/file | Bấm **Chọn thư mục làm việc**. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
 | Sửa file | Mira hiển thị diff đầy đủ. Chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi. |
 | Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
-| Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ. Đây là ghi nhớ đưa vào các lượt chat, không huấn luyện lại mô hình. |
+| Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
 | Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **Đính kèm ảnh**, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
 
 Nếu bạn đã dùng bản đầu, lịch sử trong `conversation.json` sẽ được nhập tự động vào mục **Cuộc trò chuyện trước đây**. Bộ nhớ cũ vẫn được giữ.
+
+## Bộ dữ liệu sở thích miễn phí
+
+Mira có sẵn `mira/preferences_starter.json` gồm các quy tắc trả lời và ví dụ cho dịch tự nhiên, hỗ trợ code, giao diện dễ đọc và xử lý lỗi máy tính. Lần chạy đầu, ứng dụng chép bộ mẫu vào `%LOCALAPPDATA%\Mira\preferences.json`; **từ đó chỉ sửa bản của bạn**. Bấm **Dạy Mira / bộ nhớ → Bộ sở thích** để xem, thêm, sửa, xóa, xuất hoặc nhập bộ JSON. Bạn cũng có thể khôi phục bộ mẫu nếu muốn.
+
+Mira chỉ chọn **tối đa hai ví dụ liên quan** cho mỗi câu hỏi và giới hạn số ghi nhớ gửi vào mô hình để giữ tốc độ. Các ví dụ giúp định hướng cách trả lời; chúng **không huấn luyện lại trọng số**. Mọi dữ liệu sở thích nằm trên máy và không cần tài khoản hay API trả phí khi dùng mô hình Ollama cục bộ đã tải. Nếu chọn mô hình cloud qua Ollama, chi phí và xử lý dữ liệu sẽ theo dịch vụ đó.
 
 ## Quyền truy cập và giới hạn
 
@@ -40,4 +53,4 @@ python run_mira.py
 python -m unittest discover -s tests -v
 ```
 
-`mira/gui.py` chứa giao diện; `mira/agent.py` gọi Ollama và giới hạn công cụ; `mira/workspace.py` kiểm tra đường dẫn, diff và sao lưu; `mira/storage.py` lưu dữ liệu cục bộ. Không yêu cầu thư viện Python ngoài standard library cho tính năng hiện có.
+`mira/gui.py` chứa giao diện; `mira/agent.py` gọi Ollama và giới hạn công cụ; `mira/workspace.py` kiểm tra đường dẫn, diff và sao lưu; `mira/storage.py` lưu dữ liệu cục bộ; `mira/preferences.py` chọn sở thích theo ngữ cảnh. Không yêu cầu thư viện Python ngoài standard library cho tính năng hiện có.
