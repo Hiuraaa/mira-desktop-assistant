@@ -13,7 +13,7 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
-from .agent import Agent
+from .agent import Agent, is_cloud_model
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
 from .speech import SpeechPlayer
@@ -60,6 +60,10 @@ class MiraApp(tk.Tk):
         self.available_models: list[str] = []
         self.name_var = tk.StringVar(value=settings.get("name") or "Mira")
         self.model_var = tk.StringVar(value=settings.get("model") or "qwen3:4b")
+        self.cloud_consent = settings.get("cloud_consent") is True
+        self.last_local_model = str(settings.get("last_local_model") or "qwen3:4b")
+        if not is_cloud_model(self.model_var.get()):
+            self.last_local_model = self.model_var.get()
         self.fast_var = tk.BooleanVar(value=settings.get("fast_mode", True))
         self.deep_var = tk.BooleanVar(value=settings.get("deep_thinking", False))
         self.voice_auto_var = tk.BooleanVar(value=settings.get("voice_auto", False))
@@ -139,8 +143,10 @@ class MiraApp(tk.Tk):
             row=7, column=0, sticky="ew", pady=3)
         self._button(sidebar, "🚀  Mô hình mạnh & tốc độ", self._model_lab_dialog, subtle=True).grid(
             row=8, column=0, sticky="ew", pady=3)
+        self._button(sidebar, "☁  AI cloud cho máy yếu", self._cloud_dialog, subtle=True).grid(
+            row=9, column=0, sticky="ew", pady=3)
         self._button(sidebar, "↥  Xuất cuộc trò chuyện", self._export_chat, subtle=True).grid(
-            row=9, column=0, sticky="ew", pady=(3, 0))
+            row=10, column=0, sticky="ew", pady=(3, 0))
 
         main = tk.Frame(self, bg=BG, padx=23, pady=16)
         main.grid(row=0, column=1, sticky="nsew")
@@ -240,9 +246,14 @@ class MiraApp(tk.Tk):
         self.input.focus_set()
 
     def _save_settings(self):
+        selected_model = self.model_var.get().strip()
+        if selected_model and not is_cloud_model(selected_model):
+            self.last_local_model = selected_model
         save_json(self.settings_path, {
             "name": self.name_var.get().strip()[:40] or "Mira",
-            "model": self.model_var.get().strip(),
+            "model": selected_model,
+            "cloud_consent": self.cloud_consent,
+            "last_local_model": self.last_local_model,
             "fast_mode": self.fast_var.get(),
             "deep_thinking": self.deep_var.get(),
             "voice_auto": self.voice_auto_var.get(),
@@ -650,7 +661,7 @@ class MiraApp(tk.Tk):
                 try:
                     installed = self.agent.client.list_models()
                     candidates = [m for m in ("qwen3:4b", "qwen3.5:4b", "qwen3.5:9b", self.model_var.get())
-                                  if m in installed]
+                                  if m in installed and not is_cloud_model(m)]
                     candidates = list(dict.fromkeys(candidates))
                     if not candidates:
                         raise RuntimeError("Chưa cài mô hình nào. Hãy tải một mô hình trước.")
@@ -681,6 +692,140 @@ class MiraApp(tk.Tk):
                        selectcolor=PANEL, activebackground=BG, activeforeground=TEXT).pack(
                            anchor="w", padx=20, pady=(0, 12))
         self._check_ollama()
+
+    def _confirm_cloud(self, model: str, *, parent=None) -> bool:
+        if not is_cloud_model(model) or self.cloud_consent:
+            return True
+        accepted = messagebox.askyesno(
+            "Cho phép gửi dữ liệu đến Ollama Cloud?",
+            "Mô hình cloud chạy trên máy chủ, cần Internet. Mira có thể gửi câu hỏi, "
+            "lịch sử chat gần đây, bộ nhớ và sở thích liên quan, ảnh bạn đính kèm, "
+            "cùng nội dung file mà Mira được phép đọc qua Ollama Cloud.\n\n"
+            "Gói Free có hạn mức. Nếu tài khoản Ollama đã nạp credit, dịch vụ có thể "
+            "trừ credit khi hết lượt miễn phí; Mira không thể khóa việc này.\n\n"
+            "Bạn đồng ý dùng mô hình cloud cho các tin nhắn tiếp theo? "
+            "Có thể thu hồi trong mục AI cloud cho máy yếu.",
+            parent=parent or self,
+        )
+        if accepted:
+            self.cloud_consent = True
+        return accepted
+
+    def _cloud_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("AI cloud cho máy yếu")
+        dialog.geometry("680x570")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Mira trên máy yếu", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
+        intro = ("Mira và Ollama vẫn mở trên máy; mô hình cloud xử lý trên máy chủ. "
+                 "Bạn cần mạng và tài khoản Ollama, nhưng không cần GPU mạnh hay tải "
+                 "trọng số mô hình nhiều GB.")
+        tk.Label(dialog, text=intro, bg=BG, fg=MUTED, wraplength=630,
+                 justify="left").pack(anchor="w", padx=20)
+        steps = ("1. Mở Ollama; trong PowerShell chạy: ollama signin\n"
+                 "2. Xem mô hình được dùng trong gói Free của tài khoản Ollama, rồi chạy:\n"
+                 "    ollama pull <tên-mô-hình-cloud>\n"
+                 "3. Bấm Kiểm tra lại và chọn mô hình xuất hiện bên dưới.")
+        tk.Label(dialog, text=steps, bg=BG, fg=TEXT, wraplength=630,
+                 justify="left").pack(anchor="w", padx=20, pady=(14, 6))
+        tk.Label(dialog, text="Lệnh pull cho cloud chỉ đăng ký mô hình, không tải trọng số lớn. "
+                 "Chọn mô hình hỗ trợ công cụ nếu muốn Mira làm việc với file/code.",
+                 bg=BG, fg=MUTED, wraplength=630, justify="left").pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Mô hình cloud Ollama đã đăng ký", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(15, 4))
+        cloud_models = [m for m in self.available_models if is_cloud_model(m)]
+        chosen = ttk.Combobox(dialog, values=cloud_models, state="readonly", font=("Segoe UI", 11))
+        if is_cloud_model(self.model_var.get()) and self.model_var.get() in cloud_models:
+            chosen.set(self.model_var.get())
+        elif cloud_models:
+            chosen.set(cloud_models[0])
+        chosen.pack(fill="x", padx=20)
+        current = tk.StringVar(value="Đang dùng: " + self.model_var.get())
+        tk.Label(dialog, textvariable=current, bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(12, 3))
+        note = tk.StringVar(value="Không thấy mô hình? Đăng nhập, chạy ollama pull rồi bấm Kiểm tra lại.")
+        tk.Label(dialog, textvariable=note, bg=BG, fg=MUTED, wraplength=630,
+                 justify="left").pack(anchor="w", padx=20)
+
+        def refreshed(models):
+            if not dialog.winfo_exists():
+                return
+            choices = [m for m in models if is_cloud_model(m)]
+            chosen.configure(values=choices)
+            if chosen.get() not in choices:
+                chosen.set(choices[0] if choices else "")
+            note.set(f"Đã tìm thấy {len(choices)} mô hình cloud."
+                     if choices else "Chưa thấy mô hình cloud. Hãy đăng nhập và chạy ollama pull.")
+
+        def use_cloud():
+            model = chosen.get()
+            if not model or model not in self.available_models:
+                note.set("Hãy đăng ký mô hình cloud, sau đó bấm Kiểm tra lại.")
+                return
+            if not self._confirm_cloud(model, parent=dialog):
+                note.set("Chưa bật cloud; tin nhắn vẫn ở trên máy.")
+                return
+            previous = self.model_var.get()
+            self.model_var.set(model)
+            try:
+                self._save_settings()
+            except OSError as exc:
+                self.model_var.set(previous)
+                messagebox.showerror("Không lưu được", str(exc), parent=dialog)
+                return
+            current.set("Đang dùng: " + model)
+            note.set("Đã bật cloud cho tin nhắn tiếp theo. Hạn mức Free do Ollama quy định.")
+            self._check_ollama()
+
+        def use_local():
+            local = [m for m in self.available_models if not is_cloud_model(m)]
+            model = self.last_local_model if self.last_local_model in local else (local[0] if local else "")
+            if not model:
+                note.set("Chưa có mô hình trên máy. Hãy tải mô hình nhỏ bằng ollama pull qwen3:1.7b.")
+                return
+            previous = self.model_var.get()
+            self.model_var.set(model)
+            try:
+                self._save_settings()
+            except OSError as exc:
+                self.model_var.set(previous)
+                messagebox.showerror("Không lưu được", str(exc), parent=dialog)
+                return
+            current.set("Đang dùng: " + model)
+            note.set("Đã trở về mô hình trên máy.")
+            self._check_ollama()
+
+        def revoke():
+            previous = self.cloud_consent
+            self.cloud_consent = False
+            try:
+                self._save_settings()
+            except OSError as exc:
+                self.cloud_consent = previous
+                messagebox.showerror("Không lưu được", str(exc), parent=dialog)
+                return
+            note.set("Đã thu hồi đồng ý. Mira sẽ hỏi lại trước khi gửi tin nhắn lên cloud.")
+            self._check_ollama()
+
+        buttons = tk.Frame(dialog, bg=BG)
+        buttons.pack(fill="x", padx=20, pady=(15, 8))
+        self._button(buttons, "Dùng cloud", use_cloud, primary=True).pack(side="left")
+        self._button(buttons, "Kiểm tra lại", lambda: self._check_ollama(refreshed)).pack(side="left", padx=6)
+        self._button(buttons, "Về AI trên máy", use_local).pack(side="left")
+        self._button(dialog, "Thu hồi đồng ý gửi lên cloud", revoke).pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Free có hạn mức và có thể hết lượt; nếu tài khoản đã mua credit, "
+                 "hãy kiểm tra cách Ollama sử dụng credit. Mira không tự nạp tiền.",
+                 bg=BG, fg="#ffc59f", wraplength=630, justify="left").pack(
+                     anchor="w", padx=20, pady=(10, 2))
+        links = tk.Frame(dialog, bg=BG)
+        links.pack(fill="x", padx=20)
+        self._button(links, "Xem mô hình cloud", lambda: webbrowser.open(
+            "https://ollama.com/search?c=cloud")).pack(side="left")
+        self._button(links, "Xem giá & hạn mức", lambda: webbrowser.open(
+            "https://ollama.com/pricing")).pack(side="left", padx=6)
+        self._check_ollama(refreshed)
 
     def _set_deep_thinking(self):
         try:
@@ -738,7 +883,8 @@ class MiraApp(tk.Tk):
         name = tk.Entry(dialog, font=("Segoe UI", 12), bg="#f7fbff", fg=INK)
         name.insert(0, self.name_var.get())
         name.pack(fill="x", padx=20, pady=(3, 12))
-        tk.Label(dialog, text="Mô hình Ollama (đã tải trên máy)", bg=BG, fg=MUTED).pack(anchor="w", padx=20)
+        tk.Label(dialog, text="Mô hình Ollama (trên máy hoặc cloud đã đăng ký)",
+                 bg=BG, fg=MUTED).pack(anchor="w", padx=20)
         model = ttk.Combobox(dialog, values=self.available_models, font=("Segoe UI", 12))
         model.set(self.model_var.get())
         model.pack(fill="x", padx=20, pady=(3, 8))
@@ -774,6 +920,8 @@ class MiraApp(tk.Tk):
             if not chosen_name or not chosen_model or any(c.isspace() for c in chosen_model):
                 messagebox.showerror("Thiếu thông tin", "Hãy nhập tên và mô hình Ollama hợp lệ.", parent=dialog)
                 return
+            if not self._confirm_cloud(chosen_model, parent=dialog):
+                return
             self.name_var.set(chosen_name[:40])
             self.model_var.set(chosen_model)
             self.playful_var.set(dialog_playful.get())
@@ -794,6 +942,7 @@ class MiraApp(tk.Tk):
         self._button(controls, "Hướng dẫn cài", self._setup_guide).pack(side="left")
         self._button(controls, "Kiểm tra lại", lambda: self._check_ollama(
             lambda choices: model.configure(values=choices) if dialog.winfo_exists() else None)).pack(side="left", padx=7)
+        self._button(controls, "AI cloud", self._cloud_dialog).pack(side="left")
         if self.workspace:
             self._button(dialog, "Bỏ quyền truy cập thư mục", self._clear_folder).pack(anchor="w", padx=20)
 
@@ -809,7 +958,7 @@ class MiraApp(tk.Tk):
     def _setup_guide(self):
         dialog = tk.Toplevel(self)
         dialog.title("Cài Ollama cho Mira")
-        dialog.geometry("550x400")
+        dialog.geometry("550x440")
         dialog.configure(bg=BG)
         dialog.transient(self)
         tk.Label(dialog, text="Bắt đầu trò chuyện với Mira", bg=BG, fg=TEXT,
@@ -825,6 +974,8 @@ class MiraApp(tk.Tk):
                  anchor="w", font=("Segoe UI", 11)).pack(fill="x", padx=20)
         self._button(dialog, "Mở trang tải Ollama", lambda: webbrowser.open("https://ollama.com/download/windows"),
                      primary=True).pack(anchor="w", padx=20, pady=14)
+        self._button(dialog, "Máy yếu: dùng AI cloud miễn phí có hạn mức", self._cloud_dialog).pack(
+            anchor="w", padx=20)
 
     def _check_ollama(self, on_done=None):
         self.health_var.set("Đang kiểm tra Ollama trên máy…")
@@ -847,13 +998,20 @@ class MiraApp(tk.Tk):
                     self.health_var.set("●  " + error)
                     self.health_label.configure(fg="#ffc59f")
                 elif not models:
-                    self.health_var.set("●  Ollama đang chạy • chưa có mô hình. Xem Cách cài.")
+                    self.health_var.set("●  Chưa có mô hình • xem Cách cài hoặc AI cloud cho máy yếu.")
                     self.health_label.configure(fg="#ffc59f")
                 elif self.model_var.get() not in models:
-                    self.health_var.set(f"●  Chưa có {self.model_var.get()} • hãy tải hoặc chọn mô hình đã cài.")
+                    if is_cloud_model(self.model_var.get()):
+                        self.health_var.set("●  Chưa có mô hình cloud • đăng nhập, đăng ký rồi Kiểm tra lại.")
+                    else:
+                        self.health_var.set(f"●  Chưa có {self.model_var.get()} • hãy tải hoặc chọn mô hình đã cài.")
                     self.health_label.configure(fg="#ffc59f")
                 else:
-                    self.health_var.set(f"●  Ollama sẵn sàng • {self.model_var.get()}")
+                    if is_cloud_model(self.model_var.get()):
+                        detail = "Free có hạn mức" if self.cloud_consent else "chờ bạn đồng ý trước khi gửi"
+                        self.health_var.set(f"☁  Cloud • {self.model_var.get()} • {detail}")
+                    else:
+                        self.health_var.set(f"●  Ollama sẵn sàng • {self.model_var.get()}")
                     self.health_label.configure(fg=ACCENT)
 
             try:
@@ -975,6 +1133,9 @@ class MiraApp(tk.Tk):
         chat_id = self.active_chat_id
         name = self.name_var.get().strip()[:40] or "Mira"
         model = self.model_var.get().strip()
+        if not self._confirm_cloud(model):
+            self.status_var.set("Đã hủy gửi lên cloud; tin nhắn vẫn ở ô soạn thảo.")
+            return
         try:
             self._save_settings()
             existing = list(self.chats.get(chat_id)["messages"])

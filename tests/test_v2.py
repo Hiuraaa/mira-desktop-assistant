@@ -75,6 +75,36 @@ class VisibleComposerTests(unittest.TestCase):
                         self.assertTrue(any(child.title() == "Mô hình mạnh & tốc độ"
                                             for child in app.winfo_children()
                                             if isinstance(child, tk.Toplevel)))
+                        app._cloud_dialog()
+                        app.update()
+                        self.assertTrue(any(child.title() == "AI cloud cho máy yếu"
+                                            for child in app.winfo_children()
+                                            if isinstance(child, tk.Toplevel)))
+                    finally:
+                        app._close()
+        except tk.TclError as exc:
+            if "display" in str(exc).lower() or "screen" in str(exc).lower():
+                self.skipTest("Môi trường không có màn hình Tkinter: " + str(exc))
+            raise
+
+    def test_cloud_send_needs_consent_before_saving_or_sending_text(self):
+        if tk is None:
+            self.skipTest("Tkinter chưa có trong môi trường CI.")
+        try:
+            from mira.gui import MiraApp
+            with tempfile.TemporaryDirectory() as folder:
+                with patch.dict(os.environ, {"MIRA_DATA_DIR": folder}):
+                    app = MiraApp()
+                    try:
+                        app.model_var.set("gemma4:cloud")
+                        app.input.insert("1.0", "Chuyện riêng tư")
+                        with patch("mira.gui.messagebox.askyesno", return_value=False) as confirm:
+                            app._send()
+                        self.assertEqual(confirm.call_count, 1)
+                        self.assertFalse(app.cloud_consent)
+                        self.assertEqual(app.input.get("1.0", "end").strip(), "Chuyện riêng tư")
+                        self.assertEqual(app.chats.get(app.active_chat_id)["messages"], [])
+                        self.assertFalse(app.busy)
                     finally:
                         app._close()
         except tk.TclError as exc:

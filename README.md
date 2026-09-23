@@ -1,12 +1,12 @@
 # Mira — trợ lý AI cá nhân trên máy tính
 
-Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Việt qua mô hình Ollama chạy trên máy bạn. Bạn có thể nhờ Mira giải thích, viết code, tìm/đọc file, kiểm tra cú pháp Python và đề xuất sửa file trong thư mục bạn chọn. Tên gọi và cách xưng hô của Mira có thể chỉnh trong **Mô hình & cài đặt**.
+Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Việt qua Ollama. Bạn có thể dùng mô hình trên máy hoặc chọn mô hình Ollama Cloud cho máy yếu. Mira giúp giải thích, viết code, tìm/đọc file, kiểm tra cú pháp Python và đề xuất sửa file trong thư mục bạn chọn. Tên gọi và cách xưng hô của Mira có thể chỉnh trong **Mô hình & cài đặt**.
 
 ## Chạy Mira trên Windows
 
 1. Cài [Python 3.11+](https://www.python.org/downloads/) và chọn **Add python.exe to PATH** trong trình cài đặt.
 2. Cài [Ollama cho Windows](https://ollama.com/download/windows) và mở Ollama.
-3. Mở PowerShell, chạy `ollama pull qwen3:4b` và đợi tải xong. Chọn mô hình khác có hỗ trợ gọi công cụ nếu muốn.
+3. Nếu dùng AI trên máy, mở PowerShell, chạy `ollama pull qwen3:4b` và đợi tải xong. Nếu máy yếu, bỏ qua bước tải mô hình lớn và làm theo mục **AI cloud cho máy yếu** bên dưới.
 4. Giải nén ZIP, nhấn đúp **`start_windows.bat`**. Không cần `pip install` cho bản cơ bản.
 5. Màn hình mở thẳng vào chat: ô **NHẮN MIRA** màu sáng nằm ngay dưới vùng hội thoại. Nhập câu hỏi rồi bấm **Gửi** hoặc Enter. **Shift+Enter** xuống dòng. Thanh trạng thái phía trên cho biết Ollama đã sẵn sàng chưa; bấm **Cách cài** nếu cần.
 
@@ -17,7 +17,15 @@ Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên
 - Bản này **hiển thị nội dung dần** ngay khi Ollama bắt đầu tạo chữ. Thời gian suy luận thật vẫn tùy CPU/GPU và RAM trên máy; lần đầu tải mô hình thường chậm hơn.
 - Trong **Mô hình & cài đặt**, bật **Ưu tiên tốc độ** (mặc định). Mira gửi ít lịch sử và ví dụ phù hợp hơn, dùng ngữ cảnh gọn; những cuộc trò chuyện dài hoặc file code lớn có thể cần tắt chế độ này để giữ thêm ngữ cảnh.
 - Muốn giảm tải thêm, chạy `ollama pull qwen3:1.7b`, mở **Mô hình & cài đặt**, chọn `qwen3:1.7b`. Mô hình nhỏ hơn thường nhanh hơn nhưng có thể kém chính xác khi sửa code phức tạp. `qwen3:1.7b` chỉ dùng văn bản, không nhìn ảnh; khi gửi ảnh hãy chọn mô hình vision như `qwen3-vl:4b`.
-- Mira giữ mô hình sẵn trong Ollama trong khoảng **15 phút** giữa các yêu cầu để tránh tải lại; điều này có thể giữ RAM đang dùng. Đây là tham số `keep_alive`, không chạy Mira trên cloud.
+- Mira giữ mô hình cục bộ sẵn trong Ollama trong khoảng **15 phút** giữa các yêu cầu để tránh tải lại; điều này có thể giữ RAM đang dùng. Mô hình cloud chạy trên máy chủ và phụ thuộc tốc độ mạng, tải máy chủ, hạn mức tài khoản.
+
+### AI cloud cho máy yếu: dùng gói Free có hạn mức
+
+1. Cài và mở Ollama, mở PowerShell, chạy `ollama signin`. Việc đăng nhập thực hiện với Ollama, không nhập mật khẩu vào Mira.
+2. Xem [gói Free và mô hình Starter hiện áp dụng](https://ollama.com/pricing) trong tài khoản. Chọn một mô hình cloud bạn được phép dùng, ưu tiên mô hình hỗ trợ gọi công cụ nếu muốn Mira làm việc với file/code. Chạy `ollama pull <tên-mô-hình-cloud>` để đăng ký mô hình. Ví dụ cú pháp tên là `gemma4:cloud`; đây **không phải cam kết** mô hình cụ thể đó nằm trong hạn mức Free của tài khoản bạn. Lệnh pull cho cloud không tải trọng số hàng GB.
+3. Mở Mira → **☁ AI cloud cho máy yếu** → **Kiểm tra lại** → chọn mô hình cloud đã xuất hiện → **Dùng cloud**. Mira sẽ hỏi bạn trước khi gửi nội dung chat, ghi nhớ/sở thích liên quan, ảnh hoặc phần file mà Mira được cấp quyền đọc lên Ollama Cloud. Mục này có nút chuyển về mô hình trên máy và thu hồi đồng ý.
+
+Gói Free của Ollama có lượt dùng Starter hằng tháng, không phải cloud miễn phí vô hạn; mô hình có quyền truy cập và hạn mức có thể thay đổi. Ollama có thể dùng credit đã mua của bạn khi hết lượt miễn phí; Mira không nạp credit, không nhập thẻ và không thể khóa khoản credit đã mua trên tài khoản. Nếu chỉ muốn miễn phí, hãy dùng gói Free và không mua credit; kiểm tra [lượt dùng tài khoản](https://ollama.com/settings) trước khi chat. Mô hình cloud cần Internet và có thể chậm lúc mạng yếu hoặc máy chủ bận. Nếu gói Free hết lượt, hãy chờ kỳ làm mới hoặc quay về AI trên máy.
 
 ### Mô hình mạnh hơn và tốc độ thật trên máy
 
@@ -48,7 +56,7 @@ Nếu bạn đã dùng bản đầu, lịch sử trong `conversation.json` sẽ 
 
 Mira có sẵn `mira/preferences_starter.json` gồm các quy tắc trả lời và ví dụ cho dịch tự nhiên, hỗ trợ code, giao diện dễ đọc và xử lý lỗi máy tính. Lần chạy đầu, ứng dụng chép bộ mẫu vào `%LOCALAPPDATA%\Mira\preferences.json`; **từ đó chỉ sửa bản của bạn**. Bấm **Dạy Mira / bộ nhớ → Bộ sở thích** để xem, thêm, sửa, xóa, xuất hoặc nhập bộ JSON. Bạn cũng có thể khôi phục bộ mẫu nếu muốn.
 
-Mira chỉ chọn **tối đa hai ví dụ liên quan** cho mỗi câu hỏi và giới hạn số ghi nhớ gửi vào mô hình để giữ tốc độ. Các ví dụ giúp định hướng cách trả lời; chúng **không huấn luyện lại trọng số**. Mọi dữ liệu sở thích nằm trên máy và không cần tài khoản hay API trả phí khi dùng mô hình Ollama cục bộ đã tải. Nếu chọn mô hình cloud qua Ollama, chi phí và xử lý dữ liệu sẽ theo dịch vụ đó.
+Mira chỉ chọn **tối đa hai ví dụ liên quan** cho mỗi câu hỏi và giới hạn số ghi nhớ gửi vào mô hình để giữ tốc độ. Các ví dụ giúp định hướng cách trả lời; chúng **không huấn luyện lại trọng số**. Dữ liệu sở thích lưu trên máy, không cần tài khoản hay API trả phí khi dùng mô hình cục bộ đã tải. Khi chọn mô hình cloud, Mira gửi phần sở thích/ghi nhớ liên quan cùng yêu cầu đến Ollama Cloud sau khi bạn đồng ý.
 
 ### Chế độ Mira hoạt bát
 
@@ -58,7 +66,7 @@ Chế độ này được bật mặc định sau khi cập nhật; bấm **✦ 
 
 ## Quyền truy cập và giới hạn
 
-- Mira kết nối với Ollama qua `127.0.0.1:11434`. Nội dung chat, bộ nhớ, những file được Mira đọc và ảnh bạn chủ động đính kèm sẽ được gửi tới mô hình đã chọn. Nếu chọn mô hình cloud trong Ollama, cách xử lý dữ liệu phụ thuộc dịch vụ mô hình đó.
+- Mira kết nối với ứng dụng Ollama qua `127.0.0.1:11434`. Mô hình cục bộ xử lý trên máy; với mô hình cloud (`:cloud` hoặc `-cloud`), Ollama chuyển yêu cầu qua Internet để xử lý trên máy chủ. Mira hỏi đồng ý trước lượt chat cloud đầu tiên và cho phép thu hồi. Tin nhắn, lịch sử gần đây, ghi nhớ/sở thích được chọn, ảnh bạn đính kèm và nội dung file công cụ đọc được có thể vào yêu cầu đó. Không tự động gửi cả thư mục. Nếu tạo alias cloud với tên tùy ý không có đuôi cloud, Mira không thể tự nhận ra alias đó; hãy tránh dùng alias như vậy khi cần bảo vệ dữ liệu.
 - Chỉ các file trong thư mục do bạn chọn mới được đọc/tìm/sửa. Mira từ chối đường dẫn ra ngoài, symlink, một số file thường chứa thông tin đăng nhập và thư mục sinh tự động (`.git`, `node_modules`, `.venv`...). File đọc tối đa 64 KiB, file sửa tối đa 128 KiB, văn bản UTF-8. Mỗi lần ghi đều phải được bạn duyệt.
 - Mira không tự chạy lệnh do mô hình đề xuất. Nút **Chạy kiểm thử** chỉ chạy lệnh đã hiển thị sau khi bạn xác nhận; kiểm thử có thể thực thi code của dự án. Ứng dụng chưa điều khiển chuột, đọc màn hình liên tục hay nghe microphone. Để Mira xem ảnh, bạn cần chọn ảnh thủ công và dùng mô hình có hỗ trợ ảnh. Code và lời khuyên do AI tạo ra có thể sai; hãy xem diff trước khi ghi.
 - Giọng đọc chỉ hoạt động trên Windows có PowerShell và giọng System.Speech cài sẵn. Văn bản trả lời được đưa vào bộ tổng hợp giọng nói cục bộ; mã code, liên kết và đoạn quá dài được lược bớt khi đọc. Ứng dụng không tự bật micro và không dùng dịch vụ TTS trả phí.
