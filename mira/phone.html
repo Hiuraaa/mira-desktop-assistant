@@ -22,6 +22,20 @@
     p { line-height: 1.55; margin: 8px 0 15px; }
     small, .hint { color: var(--muted); line-height: 1.5; }
     header small { display: block; margin-top: 9px; }
+    .brand { display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+    .phone-avatar { width: 82px; height: 82px; flex: none; border-radius: 50%;
+      border: 2px solid var(--mint); background: #273252; overflow: hidden;
+      box-shadow: 0 0 20px #b5a0ff55; --hair: #ab9bea; --hair-shadow: #615494; --iris: #8971e5; }
+    .phone-avatar.aqua { --hair: #83d6d2; --hair-shadow: #366b83; --iris: #57b8bd; }
+    .phone-avatar.rose { --hair: #f4a8bc; --hair-shadow: #93577e; --iris: #dc779f; }
+    .phone-avatar img, .phone-avatar svg { width: 100%; height: 100%; object-fit: cover; }
+    .phone-avatar [hidden] { display: none; }
+    .phone-avatar .eyes { transform-box: fill-box; transform-origin: center;
+      animation: blink 5s infinite; }
+    .phone-avatar .mouth { transform-box: fill-box; transform-origin: center; }
+    body.busy .phone-avatar .mouth { animation: talk .45s infinite alternate; }
+    @keyframes blink { 0%, 94%, 99%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.12); } }
+    @keyframes talk { from { transform: scaleY(1); } to { transform: scaleY(2); } }
     .view { padding: 20px 22px 10px; }
     .view[hidden], nav[hidden], button[hidden] { display: none; }
     .card { border: 1px solid var(--border); border-radius: 18px; background: var(--panel);
@@ -65,6 +79,13 @@
       background: #111a2b; border-top: 1px solid #303b57; padding: 15px 22px max(16px, env(safe-area-inset-bottom)); }
     #chat-compose textarea { margin: 7px 0 9px; min-height: 66px; }
     #chat-compose button { width: 100%; margin-bottom: 8px; }
+    .quick-actions { display: flex; gap: 8px; }
+    .quick-actions button { flex: 1; font-size: 13px; }
+    #screen-preview { border: 1px solid var(--border); border-radius: 12px;
+      padding: 9px; margin: 4px 0 12px; }
+    #screen-preview[hidden] { display: none; }
+    #screen-preview img { width: 100%; max-height: 145px; object-fit: contain; background: #080e1a; }
+    #device-result:empty { display: none; }
     #error { position: fixed; z-index: 4; top: 12px; left: 50%; transform: translateX(-50%);
       width: min(calc(100% - 28px), 670px); color: #fff2da; background: #344657;
       border: 1px solid #56718a; border-radius: 12px; padding: 10px 14px;
@@ -87,7 +108,28 @@
 <body>
 <main>
   <header><p class="eyebrow">Trợ lý cá nhân · trên điện thoại</p>
-    <h1><span>✦</span> Mira</h1><small id="model">Đang kết nối với Mira…</small></header>
+    <div class="brand"><div><h1><span>✦</span> Mira</h1><small id="model">Đang kết nối với Mira…</small></div>
+    <div id="phone-avatar" class="phone-avatar" aria-label="Nhân vật anime của Mira">
+      <svg id="avatar-drawn" viewBox="0 0 96 96" role="img" aria-label="Mira đang chớp mắt">
+        <circle cx="48" cy="48" r="47" fill="#26324f"/>
+        <path d="M20 63 Q9 9 45 13 Q88 4 77 68 L84 94 H13 Z" fill="var(--hair-shadow)"/>
+        <path d="M13 96 Q20 72 48 72 Q76 72 83 96" fill="#f7f1ff"/>
+        <path d="M27 96 L35 76 L48 88 L61 76 L69 96" fill="#7665b0"/>
+        <ellipse cx="48" cy="48" rx="28" ry="34" fill="#ffdfd2"/>
+        <path d="M19 46 Q10 8 42 12 Q83 6 80 45 Q66 36 59 26 Q42 47 25 39 Z" fill="var(--hair)"/>
+        <path d="M36 14 Q46 12 51 16 L28 39" fill="#d8c7ff"/>
+        <path d="M17 39 Q14 60 27 79 L31 52 Z M78 37 Q83 67 70 79 L66 49 Z" fill="var(--hair)"/>
+        <g class="eyes"><ellipse cx="37" cy="53" rx="7" ry="9" fill="#fff6f6"/>
+          <ellipse cx="59" cy="53" rx="7" ry="9" fill="#fff6f6"/>
+          <ellipse cx="38" cy="53" rx="4" ry="8" fill="var(--iris)"/>
+          <ellipse cx="58" cy="53" rx="4" ry="8" fill="var(--iris)"/>
+          <circle cx="39" cy="49" r="2" fill="white"/><circle cx="59" cy="49" r="2" fill="white"/></g>
+        <ellipse cx="28" cy="65" rx="6" ry="2.5" fill="#f4b8bd"/>
+        <ellipse cx="68" cy="65" rx="6" ry="2.5" fill="#f4b8bd"/>
+        <ellipse class="mouth" cx="48" cy="68" rx="4" ry="2" fill="#a85671"/>
+      </svg>
+      <img id="avatar-custom" alt="Ảnh PNG nhân vật Mira do bạn chọn" hidden>
+    </div></div></header>
   <section class="view" id="pair-view" hidden>
     <div class="card">
       <h2>Ghép nối điện thoại</h2>
@@ -107,8 +149,18 @@
     <div id="chat-compose">
       <label for="chat-text">Nhắn Mira</label>
       <textarea id="chat-text" maxlength="2000" placeholder="Hôm nay mình nên làm gì trước?"></textarea>
+      <div class="quick-actions">
+        <button id="device-button" type="button">◉ Kiểm tra pin PC</button>
+        <button id="screen-button" type="button">▣ Xem màn hình PC</button>
+      </div>
+      <p id="device-result" class="hint" role="status"></p>
+      <div id="screen-preview" hidden>
+        <img id="screen-image" alt="Ảnh màn hình PC vừa chụp để xem trước">
+        <p class="hint">Kiểm tra ảnh trước khi gửi Mira. Ảnh có thể chứa thông tin riêng tư; nếu dùng mô hình cloud, ảnh sẽ gửi đến Ollama.</p>
+        <button id="discard-screen" type="button">Bỏ ảnh</button>
+      </div>
       <button class="primary" id="send-button">Gửi tin nhắn</button>
-      <small>Chat trên điện thoại lưu riêng. Để dùng file trên máy tính, hãy mở Mira trên máy tính.</small>
+      <small>Máy tính cần đang bật và mở Mira. Các quyền xem PC do bạn bật trên máy tính cho phiên này.</small>
     </div>
   </section>
   <section class="view" id="reminder-view" hidden>
@@ -149,6 +201,7 @@
   const $ = id => document.getElementById(id);
   let csrf = "";
   let currentTab = "chat";
+  let screenToken = "";
   const error = message => { $("error").textContent = message || ""; };
   async function request(path, payload) {
     const options = {credentials: "same-origin"};
@@ -238,8 +291,15 @@
       csrf = state.csrf;
       showPaired(true);
       $("model").textContent = state.model + (state.cloud_allowed ? " · sẵn sàng" : " · cần đồng ý cloud trên máy tính");
+      $("phone-avatar").className = "phone-avatar " + (["aqua", "rose"].includes(state.avatar_style) ? state.avatar_style : "violet");
+      $("avatar-drawn").hidden = !!state.avatar_custom;
+      $("avatar-custom").hidden = !state.avatar_custom;
+      if (state.avatar_custom && !$("avatar-custom").getAttribute("src")) $("avatar-custom").src = "/api/avatar.png";
+      if (!state.avatar_custom) $("avatar-custom").removeAttribute("src");
       renderMessages(state.messages);
       renderReminders(state.reminders);
+      $("device-button").hidden = !state.status_allowed;
+      $("screen-button").hidden = !state.screen_allowed;
       error("");
     } catch (ex) {
       if (ex.message.includes("ghép nối")) { showPaired(false); csrf = ""; }
@@ -253,12 +313,43 @@
   });
   $("send-button").addEventListener("click", async () => {
     const text = $("chat-text").value.trim();
-    if (!text) return;
+    if (!text && !screenToken) return;
     $("send-button").disabled = true;
+    document.body.classList.add("busy");
     error("Mira đang trả lời…");
-    try { await request("/api/chat", {text}); $("chat-text").value = ""; await refresh(); }
+    try {
+      await request("/api/chat", {text: text || "Hãy xem ảnh màn hình PC này và cho mình biết có gì.",
+        ...(screenToken ? {screen_token: screenToken} : {})});
+      $("chat-text").value = "";
+      clearScreen();
+      await refresh();
+    }
     catch (ex) { error(ex.message); }
-    finally { $("send-button").disabled = false; }
+    finally { $("send-button").disabled = false; document.body.classList.remove("busy"); }
+  });
+  function clearScreen() {
+    screenToken = "";
+    $("screen-image").removeAttribute("src");
+    $("screen-preview").hidden = true;
+  }
+  $("discard-screen").addEventListener("click", clearScreen);
+  $("device-button").addEventListener("click", async () => {
+    $("device-button").disabled = true;
+    try { $("device-result").textContent = (await request("/api/device/status", {})).status; error(""); }
+    catch (ex) { error(ex.message); }
+    finally { $("device-button").disabled = false; }
+  });
+  $("screen-button").addEventListener("click", async () => {
+    if (!confirm("Chụp một ảnh màn hình chính của PC để xem trước trên điện thoại?")) return;
+    $("screen-button").disabled = true;
+    try {
+      const preview = await request("/api/screen/preview", {});
+      screenToken = preview.screen_token;
+      $("screen-image").src = preview.image;
+      $("screen-preview").hidden = false;
+      error("Đã chụp ảnh. Hãy kiểm tra và bấm Gửi tin nhắn nếu muốn Mira xem.");
+    } catch (ex) { error(ex.message); }
+    finally { $("screen-button").disabled = false; }
   });
   $("draft-button").addEventListener("click", async () => {
     $("draft-button").disabled = true;
@@ -297,7 +388,7 @@
     }
   });
   $("logout").addEventListener("click", async () => {
-    try { await request("/api/logout", {}); csrf = ""; showPaired(false); error("Đã ngắt ghép nối."); }
+    try { await request("/api/logout", {}); clearScreen(); csrf = ""; showPaired(false); error("Đã ngắt ghép nối."); }
     catch (ex) { error(ex.message); }
   });
   refresh();

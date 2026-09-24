@@ -14,6 +14,7 @@ from mira.mobile_server import PhoneServer
 from mira.preferences import PreferenceStore
 from mira.reminders import ReminderStore, draft_reminder
 from mira.storage import MemoryStore
+from mira.workspace import Workspace
 
 
 class ReminderTests(unittest.TestCase):
@@ -111,7 +112,7 @@ class PhoneSecurityTests(unittest.TestCase):
             response = error
         with response:
             raw = response.read()
-            body = raw if path.endswith(".ics") else json.loads(raw) if path != "/" else raw
+            body = raw if path.endswith((".ics", ".png")) and response.status == 200 else json.loads(raw) if path != "/" else raw
             return response.status, body, response.headers
 
     def test_identity_pairing_csrf_and_scoped_phone_chat(self):
@@ -161,3 +162,54 @@ class PhoneSecurityTests(unittest.TestCase):
         self.assertEqual(self.api("/api/reminders/delete", {"id": reminder_id},
                                   cookie=cookie, csrf=csrf)[0], 200)
         self.assertEqual(self.api("/api/state", cookie=cookie)[1]["reminders"], [])
+
+    def test_status_and_screenshot_need_separate_pc_consent_and_single_use_preview(self):
+        _, _, headers = self.api("/api/pair", {"code": self.server.new_pairing_code()})
+        cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        csrf = self.api("/api/state", cookie=cookie)[1]["csrf"]
+        self.assertEqual(self.api("/api/device/status", {}, cookie=cookie, csrf=csrf)[0], 409)
+        self.assertEqual(self.api("/api/screen/preview", {}, cookie=cookie, csrf=csrf)[0], 409)
+        image = b"\x89PNG\r\n\x1a\nprivate screenshot"
+        self.server.update_config(status_reader=lambda: "Pin laptop: 82%. Đang cắm sạc.",
+                                  screen_reader=lambda: image)
+        self.assertEqual(self.api("/api/device/status", {}, cookie=cookie, csrf=csrf)[1]["status"],
+                         "Pin laptop: 82%. Đang cắm sạc.")
+        self.assertEqual(self.api("/api/screen/preview", {}, cookie=cookie)[0], 403)
+        status, preview, _ = self.api("/api/screen/preview", {}, cookie=cookie, csrf=csrf)
+        self.assertEqual(status, 200)
+        self.assertTrue(preview["image"].startswith("data:image/png;base64,"))
+        ticket = preview["screen_token"]
+        self.assertEqual(self.api("/api/chat", {"text": "Xem màn hình", "screen_token": ticket},
+                                  cookie=cookie, csrf=csrf)[0], 200)
+        self.assertEqual(self.agent.calls[-1][3]["image"], image)
+        self.assertEqual(self.api("/api/chat", {"text": "Xem lại", "screen_token": ticket},
+                                  cookie=cookie, csrf=csrf)[0], 409)
+        ticket = self.api("/api/screen/preview", {}, cookie=cookie, csrf=csrf)[1]["screen_token"]
+        self.server.update_config(screen_reader=None)
+        self.assertEqual(self.api("/api/chat", {"text": "Xem lại", "screen_token": ticket},
+                                  cookie=cookie, csrf=csrf)[0], 409)
+        self.assertFalse(self.api("/api/state", cookie=cookie)[1]["screen_allowed"])
+
+    def test_phone_workspace_has_read_only_flag_and_is_revocable(self):
+        _, _, headers = self.api("/api/pair", {"code": self.server.new_pairing_code()})
+        cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        csrf = self.api("/api/state", cookie=cookie)[1]["csrf"]
+        workspace = Workspace(Path(self.temp.name), Path(self.temp.name) / "backups")
+        self.server.update_config(workspace=workspace)
+        self.api("/api/chat", {"text": "Tìm file"}, cookie=cookie, csrf=csrf)
+        self.assertIs(self.agent.calls[-1][2], workspace)
+        self.assertTrue(self.agent.calls[-1][3]["workspace_read_only"])
+        self.server.update_config(workspace=None)
+        self.api("/api/chat", {"text": "Tìm file"}, cookie=cookie, csrf=csrf)
+        self.assertIsNone(self.agent.calls[-1][2])
+
+    def test_custom_avatar_is_private_to_paired_phone(self):
+        self.server._avatar_path.write_bytes(b"\x89PNG\r\n\x1a\nprivate avatar")
+        self.server.update_config(avatar_custom=True, avatar_style="aqua")
+        self.assertEqual(self.api("/api/avatar.png")[0], 401)
+        _, _, headers = self.api("/api/pair", {"code": self.server.new_pairing_code()})
+        cookie = headers.get("Set-Cookie").split(";", 1)[0]
+        self.assertEqual(self.api("/api/state", cookie=cookie)[1]["avatar_style"], "aqua")
+        self.assertTrue(self.api("/api/avatar.png", cookie=cookie)[1].startswith(b"\x89PNG"))
+        self.server.update_config(avatar_custom=False)
+        self.assertEqual(self.api("/api/avatar.png", cookie=cookie)[0], 404)
