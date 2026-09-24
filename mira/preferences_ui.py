@@ -9,19 +9,24 @@ from tkinter import filedialog, messagebox, simpledialog
 from .preferences import PreferenceStore
 from .storage import save_json
 
+BG = "#0b1423"
+PANEL = "#192b41"
+TEXT = "#f3f8fc"
+MUTED = "#acc2d2"
+
 
 def open_preference_dialog(parent: tk.Tk, store: PreferenceStore, button):
     dialog = tk.Toplevel(parent)
     dialog.title("Bộ sở thích của Mira")
     dialog.geometry("780x540")
     dialog.minsize(650, 440)
-    dialog.configure(bg="#0c1422")
+    dialog.configure(bg=BG)
     dialog.transient(parent)
-    tk.Label(dialog, text="Bộ dữ liệu sở thích", bg="#0c1422", fg="#f5f8fd",
+    tk.Label(dialog, text="Bộ dữ liệu sở thích", bg=BG, fg=TEXT,
              font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(16, 4))
     tk.Label(dialog, text="Các quy tắc và ví dụ được lưu trên máy. Mira chọn ví dụ liên quan đến câu hỏi để trả lời hợp ý bạn.",
-             bg="#0c1422", fg="#acc1d4", wraplength=730, justify="left").pack(anchor="w", padx=18)
-    box = tk.Listbox(dialog, font=("Segoe UI", 11), bg="#1b2b42", fg="#f5f8fd",
+             bg=BG, fg=MUTED, wraplength=730, justify="left").pack(anchor="w", padx=18)
+    box = tk.Listbox(dialog, font=("Segoe UI", 11), bg=PANEL, fg=TEXT,
                      selectbackground="#325976", relief="flat", activestyle="none")
     box.pack(fill="both", expand=True, padx=18, pady=12)
     displayed: list[tuple[str, dict]] = []
@@ -109,12 +114,12 @@ def open_preference_dialog(parent: tk.Tk, store: PreferenceStore, button):
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Không nhập được", str(exc), parent=dialog)
 
-    controls = tk.Frame(dialog, bg="#0c1422")
+    controls = tk.Frame(dialog, bg=BG)
     controls.pack(fill="x", padx=18, pady=(0, 4))
     for label, action in (("+ Quy tắc", add_rule), ("+ Ví dụ", add_example),
                           ("Sửa", edit), ("Xóa", remove)):
         button(controls, label, action).pack(side="left", padx=(0, 6))
-    transfers = tk.Frame(dialog, bg="#0c1422")
+    transfers = tk.Frame(dialog, bg=BG)
     transfers.pack(fill="x", padx=18, pady=(0, 14))
     button(transfers, "Xuất JSON", export).pack(side="left", padx=(0, 6))
     button(transfers, "Nhập JSON", import_file).pack(side="left")
