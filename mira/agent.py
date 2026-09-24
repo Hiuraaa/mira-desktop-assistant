@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import json
 import re
+import threading
 import urllib.error
 import urllib.request
 from typing import Callable
 
 from .desktop import DesktopController
+from .lessons import LessonStore
 from .persona import persona_prompt
 from .web_search import local_time, search_web
 from .workspace import Workspace, WorkspaceError
@@ -205,7 +207,8 @@ class Agent:
                 desktop: DesktopController | None = None,
                 approve_action: Callable[[str], bool] | None = None,
                 status_reader: Callable[[], str] | None = None,
-                workspace_read_only: bool = False) -> str:
+                workspace_read_only: bool = False,
+                lessons: LessonStore | None = None) -> str:
         if not model or any(c.isspace() for c in model):
             raise ValueError("Tên mô hình Ollama không hợp lệ.")
         if user_text.strip().casefold().startswith("/web"):
@@ -242,6 +245,15 @@ class Agent:
         tools = ((WEB_TOOLS if web_enabled else []) + (DEVICE_TOOLS if status_reader else []) +
                  (TOOLS[:4] if workspace and workspace_read_only else TOOLS if workspace else []) +
                  (DESKTOP_TOOLS if desktop is not None and approve_action is not None else []))
+        if lessons is not None and desktop is not None and approve_action is not None:
+            choices = lessons.list()
+            if choices:
+                tools.append({"type": "function", "function": {
+                    "name": "run_learned_action",
+                    "description": "Run one saved keyboard lesson only after the user approves its exact steps and target window. Available lessons: " +
+                                   "; ".join(item["id"] + " = " + item["name"] for item in choices),
+                    "parameters": {"type": "object", "properties": {"id": {
+                        "type": "string", "enum": [item["id"] for item in choices]}}, "required": ["id"]}}})
         tool_count = 0
         click_count = 0
         web_count = 0
@@ -287,7 +299,7 @@ class Agent:
                 elif name_of_tool not in {tool["function"]["name"] for tool in tools}:
                     result = "Công cụ này chưa được cấp quyền trong lượt hiện tại."
                 elif desktop_denied and name_of_tool in {
-                        "click_screen", "type_text", "press_keys", "open_app"}:
+                        "click_screen", "type_text", "press_keys", "open_app", "run_learned_action"}:
                     result = "Người dùng đã từ chối thao tác desktop trong lượt này."
                 elif name_of_tool == "search_web" and web_count >= 3:
                     result = "Đã tra cứu ba lần trong lượt này; hãy trả lời từ những kết quả đã có."
@@ -301,7 +313,8 @@ class Agent:
                                                  approve_action=approve_action,
                                                  screen_shared=image is not None,
                                                  status_reader=status_reader,
-                                                 workspace_read_only=workspace_read_only)
+                                                 workspace_read_only=workspace_read_only,
+                                                 lessons=lessons)
                     except (WorkspaceError, KeyError, TypeError, ValueError, OSError, RuntimeError) as exc:
                         result = f"Không thực hiện được: {exc}"
                     if name_of_tool == "search_web":
@@ -312,7 +325,8 @@ class Agent:
                         desktop_denied = True
                         tools = [tool for tool in tools
                                  if tool["function"]["name"] not in {
-                                     "click_screen", "type_text", "press_keys", "open_app"}]
+                                     "click_screen", "type_text", "press_keys", "open_app",
+                                     "run_learned_action"}]
                 messages.append({"role": "tool", "tool_name": name_of_tool, "content": result[:100_000]})
             if tool_count > 12:
                 tools = []
@@ -324,13 +338,19 @@ class Agent:
                    approve_action: Callable[[str], bool] | None = None,
                    screen_shared: bool = False,
                    status_reader: Callable[[], str] | None = None,
-                   workspace_read_only: bool = False) -> str:
+                   workspace_read_only: bool = False,
+                   lessons: LessonStore | None = None) -> str:
         if name == "get_device_status":
             return status_reader() if status_reader is not None else "Chưa cấp quyền đọc trạng thái máy."
         if name == "search_web":
             if not web_enabled:
                 return "Tra cứu web chưa được bật trong Mira."
             return search_web(args["query"])
+        if name == "run_learned_action":
+            if desktop is None or approve_action is None or lessons is None:
+                return "Bài học chỉ chạy trong phiên desktop được bật quyền."
+            lessons.stop_event.clear()
+            return lessons.run(args["id"], desktop, approve_action)
         if name in {"click_screen", "type_text", "press_keys", "open_app"}:
             if desktop is None or approve_action is None:
                 return "Quyền điều khiển máy chỉ cấp được trong phiên desktop; Telegram không có quyền này."

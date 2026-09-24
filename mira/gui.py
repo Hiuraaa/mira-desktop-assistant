@@ -20,6 +20,7 @@ from .agent import Agent, is_cloud_model
 from .avatar import AnimeAvatar, STYLES
 from .desktop import DesktopController, capture_primary_screen
 from .device import device_status
+from .lessons import LessonStore
 from .mobile_server import PhoneServer
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
@@ -65,11 +66,13 @@ class MiraApp(tk.Tk):
         if not isinstance(settings, dict):
             raise ValueError("Cài đặt Mira không đúng định dạng.")
         self.memories = MemoryStore(self.path / "memories.json")
+        self.lessons = LessonStore(self.path / "game_lessons.json")
         self.preferences = PreferenceStore(self.path / "preferences.json")
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
         self.reminders = ReminderStore(self.path / "reminders.json")
         self.agent = Agent()
         self.phone_server: PhoneServer | None = None
+        self.studio = None
         self.telegram_bot: TelegramBot | None = None
         self.telegram_token: str | None = None
         self.telegram_credentials_path = self.path / "telegram_credentials.json"
@@ -167,7 +170,7 @@ class MiraApp(tk.Tk):
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
-        sidebar.grid_rowconfigure(4, weight=1)
+        sidebar.grid_rowconfigure(5, weight=1)
         brand = tk.Frame(sidebar, bg=SIDE)
         brand.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         tk.Label(brand, text="✦", bg=SIDE, fg=ACCENT,
@@ -179,11 +182,14 @@ class MiraApp(tk.Tk):
                      row=1, column=0, sticky="ew", pady=(0, 23))
         self._button(sidebar, "＋  Cuộc trò chuyện mới", self._new_chat, primary=True).grid(
             row=2, column=0, sticky="ew", pady=(0, 11))
+        self.studio_button = self._button(sidebar, "✦  Mở Studio 3D",
+                                          self._open_studio, primary=True)
+        self.studio_button.grid(row=3, column=0, sticky="ew", pady=(0, 9))
         self.phone_button = self._button(sidebar, "◈  Điện thoại & lịch nhắc",
                                          self._mobile_dialog, background=SURFACE)
-        self.phone_button.grid(row=3, column=0, sticky="ew", pady=(0, 22))
+        self.phone_button.grid(row=4, column=0, sticky="ew", pady=(0, 16))
         archive = tk.Frame(sidebar, bg=SIDE)
-        archive.grid(row=4, column=0, sticky="nsew")
+        archive.grid(row=5, column=0, sticky="nsew")
         archive.grid_columnconfigure(0, weight=1)
         archive.grid_rowconfigure(1, weight=1)
         tk.Label(archive, text="GẦN ĐÂY", bg=SIDE, fg=MUTED,
@@ -194,11 +200,11 @@ class MiraApp(tk.Tk):
         self.chat_list.grid(row=1, column=0, sticky="nsew")
         self.chat_list.bind("<<ListboxSelect>>", self._select_chat)
         actions = tk.Frame(sidebar, bg=SIDE)
-        actions.grid(row=5, column=0, sticky="ew", pady=(8, 8))
+        actions.grid(row=6, column=0, sticky="ew", pady=(8, 8))
         self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
         self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
         tools = tk.Frame(sidebar, bg=SIDE)
-        tools.grid(row=6, column=0, sticky="ew", pady=(7, 0))
+        tools.grid(row=7, column=0, sticky="ew", pady=(7, 0))
         tools.grid_columnconfigure(0, weight=1)
         tk.Label(tools, text="CÔNG CỤ", bg=SIDE, fg=MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
@@ -215,6 +221,7 @@ class MiraApp(tk.Tk):
             ("◉  Bật / tắt xem trạng thái PC", self._toggle_device),
             ("▣  Chụp màn hình để hỏi Mira", self._attach_screen),
             ("✦  Nhân vật Mira", self._avatar_dialog),
+            ("✦  Studio 3D & bài học game", self._open_studio),
             ("?  Hướng dẫn cài AI", self._setup_guide),
             ("↑  Xuất cuộc trò chuyện", self._export_chat),
         )
@@ -259,6 +266,8 @@ class MiraApp(tk.Tk):
                                   image_path=self.custom_avatar_path if self.avatar_custom else None,
                                   command=self._avatar_dialog)
         self.avatar.pack(side="right", padx=(12, 0))
+        self._button(head, "✦ Studio 3D", self._open_studio, compact=True,
+                     primary=True).pack(side="right", padx=(6, 0))
         self._button(head, "Lịch nhắc", self._reminders_dialog, compact=True,
                      background=SURFACE).pack(side="right", padx=(10, 0))
         compact_tools = tk.Frame(head, bg=BG)
@@ -510,6 +519,30 @@ class MiraApp(tk.Tk):
             self.desktop_button.configure(text="🖱 Bật điều khiển máy")
             self.status_var.set("Đã tắt quyền điều khiển máy.")
 
+    def _open_studio(self):
+        if self.closed:
+            return
+        try:
+            if self.studio is None:
+                from .studio_server import StudioServer
+                self.studio = StudioServer(self)
+            self.studio.open()
+            self.status_var.set("Studio 3D đã mở trên trình duyệt của máy này. Giữ Mira đang chạy để dùng Studio.")
+        except (OSError, RuntimeError, ValueError) as exc:
+            messagebox.showerror("Không mở được Studio 3D", str(exc), parent=self)
+
+    def _ask_studio_screen(self) -> bool:
+        self.deiconify()
+        self.lift()
+        allowed = messagebox.askyesno(
+            "Chia sẻ một ảnh màn hình với Mira?",
+            "Mira sẽ chụp màn hình chính một lần sau 2 giây. Bạn có thể xem trước ở Studio "
+            "và chỉ gửi ảnh cùng tin nhắn khi bấm Gửi. Nếu dùng model cloud, ảnh được gửi tới "
+            "Ollama Cloud khi bạn gửi tin nhắn.\n\nBạn đồng ý chụp lần này?", parent=self)
+        if allowed:
+            self.iconify()
+        return allowed
+
     def _read_status_if_enabled(self):
         if not self.device_enabled:
             raise RuntimeError("Quyền đọc trạng thái PC đã bị tắt trên máy tính.")
@@ -536,6 +569,10 @@ class MiraApp(tk.Tk):
 
     def _close(self):
         self.closed = True
+        self.lessons.stop_event.set()
+        if self.studio:
+            self.studio.stop()
+            self.studio = None
         self.device_enabled = False
         self.phone_screen_enabled = False
         self.phone_files_enabled = False
@@ -644,8 +681,8 @@ class MiraApp(tk.Tk):
 
         self._button(dialog, "＋ Dùng ảnh PNG nhân vật của bạn", import_png,
                      primary=True).pack(pady=(3, 5))
-        tk.Label(dialog, text="Ảnh PNG nằm trên máy bạn. Đây là nhân vật 2D nhẹ máy; "
-                 "chưa hỗ trợ mô hình 3D/Live2D hoặc micro.", bg=BG, fg=MUTED,
+        tk.Label(dialog, text="Ảnh PNG tĩnh dành cho giao diện Tk. Mở Studio 3D để nhập file VRM "
+                 "và tương tác với nhân vật ba chiều. Micro chưa được hỗ trợ.", bg=BG, fg=MUTED,
                  wraplength=475).pack(padx=18)
 
     def _refresh_chat_list(self):
@@ -2143,7 +2180,8 @@ class MiraApp(tk.Tk):
                                             persona_note=persona_note, think=think,
                                             web_enabled=web_enabled, desktop=desktop,
                                             status_reader=self._read_status_if_enabled if self.device_enabled else None,
-                                            approve_action=self._approve_desktop_action if desktop else None)
+                                            approve_action=self._approve_desktop_action if desktop else None,
+                                            lessons=self.lessons if desktop else None)
                 error = None
             except Exception as exc:
                 answer, error = "", str(exc)
@@ -2200,4 +2238,5 @@ def main():
         messagebox.showerror("Không mở được Mira", str(exc))
         root.destroy()
         return
+    app.after(700, app._open_studio)
     app.mainloop()
