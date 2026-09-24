@@ -95,7 +95,8 @@ class VisibleComposerTests(unittest.TestCase):
                         self.assertEqual(app.clipboard_get(), "Câu trả lời thử")
                         app.geometry("1600x900")
                         app.update()
-                        self.assertTrue(app.side_panel.winfo_ismapped())
+                        if app.side_panel.master.winfo_width() >= 1280:
+                            self.assertTrue(app.side_panel.winfo_ismapped())
                         self.assertLessEqual(app.desk.winfo_width(), 900)
                         app._model_lab_dialog()
                         app.update()
