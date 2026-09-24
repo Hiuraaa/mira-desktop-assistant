@@ -207,7 +207,8 @@ class MiraApp(tk.Tk):
         workspace.grid(row=0, column=0, sticky="nsew")
         workspace.grid_columnconfigure(0, weight=1)
         workspace.grid_rowconfigure(0, weight=1)
-        desk = tk.Frame(workspace, bg=BG, width=900)
+        # Start below the minimum window width; resize after the parent has a real size.
+        desk = tk.Frame(workspace, bg=BG, width=540, height=420)
         self.desk = desk
         desk.grid(row=0, column=0, sticky="ns")
         desk.grid_propagate(False)

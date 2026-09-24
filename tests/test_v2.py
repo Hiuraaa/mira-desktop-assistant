@@ -63,7 +63,11 @@ class VisibleComposerTests(unittest.TestCase):
                     try:
                         app.geometry("900x520")
                         app.update()
-                        self.assertTrue(app.input.winfo_ismapped())
+                        self.assertTrue(app.input.winfo_ismapped(),
+                                        f"root={app.winfo_width()}x{app.winfo_height()} "
+                                        f"desk={app.desk.winfo_width()}x{app.desk.winfo_height()} "
+                                        f"desk_mapped={app.desk.winfo_ismapped()} "
+                                        f"rail_mapped={app.side_panel.winfo_ismapped()}")
                         self.assertTrue(app.send_button.winfo_ismapped())
                         self.assertTrue(app.avatar.winfo_ismapped())
                         self.assertTrue(app.phone_button.winfo_ismapped())
