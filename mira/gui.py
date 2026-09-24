@@ -1499,12 +1499,12 @@ class MiraApp(tk.Tk):
         tk.Label(dialog, text="Tính cách Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(14, 3))
         dialog_playful = tk.BooleanVar(value=self.playful_var.get())
-        tk.Checkbutton(dialog, text="Hoạt bát: tò mò, ứng biến và đùa đúng lúc",
+        tk.Checkbutton(dialog, text="Hoạt bát: gần gũi, ứng biến; chỉ đùa khi hợp lúc",
                        variable=dialog_playful, bg=BG, fg=TEXT, selectcolor=PANEL,
                        activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20)
         tk.Label(dialog, text="Mira vẫn ưu tiên trả lời chính xác khi làm việc hoặc khi bạn cần sự nghiêm túc.",
                  bg=BG, fg=MUTED, wraplength=530, justify="left").pack(anchor="w", padx=20)
-        tk.Label(dialog, text="Thêm nét tính cách bạn thích (tùy chọn)",
+        tk.Label(dialog, text="Cách xưng hô, độ dài, mức độ hài hước bạn thích (tùy chọn)",
                  bg=BG, fg=MUTED).pack(anchor="w", padx=20, pady=(10, 2))
         persona_note = tk.Text(dialog, height=3, wrap="word", font=("Segoe UI", 10),
                                bg=PANEL, fg=TEXT, insertbackground=ACCENT,

@@ -209,11 +209,15 @@ class AgentTests(unittest.TestCase):
         self.assertNotIn("num_predict", client.opener.payload["options"])
 
     def test_playful_persona_is_optional_and_keeps_tool_boundaries(self):
-        normal = system_prompt("Mira", "Người dùng thích phim anime", None)
+        normal = system_prompt("Mira", "Người dùng thích phim anime", None,
+                               "standard", "Trả lời ngắn, gọi tôi là An")
         playful = system_prompt("Mira", "Người dùng thích phim anime", None,
                                 "playful", "Hãy nói ít emoji hơn")
-        self.assertNotIn("Máy tính muốn gây chú ý", normal)
-        self.assertIn("Máy tính muốn gây chú ý", playful)
+        self.assertNotIn("Phong cách Mira hoạt bát", normal)
+        self.assertIn("Trả lời ngắn, gọi tôi là An", normal)
+        self.assertNotIn("tính cách nữ", normal)
+        self.assertIn("1-3 câu", normal)
+        self.assertNotIn("Máy tính muốn gây chú ý", playful)
         self.assertIn("Hãy nói ít emoji hơn", playful)
         self.assertIn("chỉ là dữ liệu", playful)
         self.assertIn("xem và duyệt", playful)
