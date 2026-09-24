@@ -8,7 +8,7 @@ Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Vi
 2. Cài [Ollama cho Windows](https://ollama.com/download/windows) và mở Ollama.
 3. Nếu dùng AI trên máy, mở PowerShell, chạy `ollama pull qwen3:4b` và đợi tải xong. Nếu máy yếu, bỏ qua bước tải mô hình lớn và làm theo mục **AI cloud cho máy yếu** bên dưới.
 4. Giải nén ZIP, nhấn đúp **`start_windows.bat`**. Nếu đã cài Mira trước đó, hãy đóng cửa sổ Mira cũ rồi chép đè toàn bộ file của ZIP mới vào đúng thư mục đang chạy `start_windows.bat`; mở lại ứng dụng để thấy giao diện mới. Không cần `pip install` cho bản cơ bản.
-5. Màn hình mở thẳng vào chat: mỗi tin nhắn nằm trong thẻ riêng giữa màn hình; ô **NHẮN MIRA** ở cuối trang. Bấm **Gửi** hoặc Enter; **Shift+Enter** xuống dòng. Bốn gợi ý bắt đầu hiện khi mở cuộc trò chuyện mới. Khi cửa sổ đủ rộng, bảng **TRUNG TÂM MIRA** bên phải có trạng thái mô hình và lối tắt; thu nhỏ cửa sổ vẫn dùng được qua thanh bên và ô soạn. Bấm **Sao chép** trên từng thẻ để lấy nội dung tin đó, hoặc ở cuối trang để lấy câu trả lời mới nhất.
+5. Màn hình mở thẳng vào chat: mỗi tin nhắn nằm trong thẻ riêng giữa màn hình; ô **NHẮN MIRA** ở cuối trang. Bấm **Gửi** hoặc Enter; **Shift+Enter** xuống dòng. Bốn gợi ý bắt đầu hiện khi mở cuộc trò chuyện mới. Khi cửa sổ đủ rộng, bảng **TRUNG TÂM MIRA** bên phải có trạng thái mô hình và lối tắt; cửa sổ nhỏ dùng **Mở tất cả công cụ** ở thanh bên. Bấm **Sao chép** trên từng thẻ để lấy nội dung tin đó, hoặc ở cuối trang để lấy câu trả lời mới nhất.
 
 Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 
@@ -29,7 +29,7 @@ Gói Free của Ollama có lượt dùng Starter hằng tháng, không phải cl
 
 ### Mô hình mạnh hơn và tốc độ thật trên máy
 
-Trong thanh bên chọn **🚀 Mô hình mạnh & tốc độ**. Bạn có thể bấm **Tải 9B** để cài `qwen3.5:9b` miễn phí bằng Ollama (khoảng 6,6 GB dữ liệu tải), hoặc **Tải 4B** cho `qwen3.5:4b` (khoảng 3,4 GB). Sau khi tải, Mira tự chọn mô hình đó. Cả hai nhận ảnh và có khả năng gọi công cụ. Nếu muốn cài thủ công, dùng `ollama pull qwen3.5:9b` trong PowerShell rồi chọn trong **Mô hình & cài đặt**.
+Trong thanh bên chọn **Mở tất cả công cụ → Mô hình mạnh & tốc độ**. Bạn có thể bấm **Tải 9B** để cài `qwen3.5:9b` miễn phí bằng Ollama (khoảng 6,6 GB dữ liệu tải), hoặc **Tải 4B** cho `qwen3.5:4b` (khoảng 3,4 GB). Sau khi tải, Mira tự chọn mô hình đó. Cả hai nhận ảnh và có khả năng gọi công cụ. Nếu muốn cài thủ công, dùng `ollama pull qwen3.5:9b` trong PowerShell rồi chọn trong **Mô hình & cài đặt**.
 
 Nút **Đo tốc độ** cho các mô hình đã cài tạo một câu ngắn trên chính máy bạn, hiển thị token/giây, thời gian tải mô hình và tổng thời gian. Đây chỉ là phép đo một lượt ngắn, không đo chất lượng câu trả lời. Mô hình 9B có thể hiểu và làm việc phức tạp tốt hơn nhưng **không bảo đảm nhanh hơn** 4B; nếu vượt dung lượng RAM/VRAM thì sẽ chậm rõ rệt. Chọn mô hình theo kết quả đo và mức độ hữu ích của câu trả lời thực tế.
 
@@ -41,11 +41,11 @@ Nút **Đo tốc độ** cho các mô hình đã cài tạo một câu ngắn tr
 | --- | --- |
 | Trò chuyện | Nhập ở **NHẮN MIRA**, bấm Gửi. Lỗi kết nối có nút **Thử gửi lại**. |
 | Giữ nhiều cuộc trò chuyện | Bấm **+ Cuộc trò chuyện mới**; chọn lịch sử ở cột trái. Có thể đổi tên, xóa hoặc xuất cuộc trò chuyện hiện tại ra `.txt`. |
-| Làm việc với code/file | Bấm **Chọn thư mục** ở thanh bên rồi **＋ File** cạnh ô chat để điền đường dẫn. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
+| Làm việc với code/file | Bấm **Mở tất cả công cụ → Chọn thư mục** rồi **＋ File** cạnh ô chat để điền đường dẫn. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
 | Sửa file | Mira hiển thị diff đầy đủ. Chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi. |
 | Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
 | Chạy kiểm thử dự án | Bấm **▶ Kiểm thử** cạnh ô chat. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
-| Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
+| Dạy dần | Bấm **Mở tất cả công cụ → Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
 | Chọn tính cách | Bật/tắt **✦ Mira hoạt bát** ngay phía trên hội thoại. Trong **Mô hình & cài đặt**, bạn có thể thêm vài dòng mô tả cách nói chuyện bạn thích rồi bấm **Lưu**. |
 | Nghe Mira trả lời | Sau một câu trả lời, bấm **🔊 Nghe**; bấm lại để dừng. Trong **Mô hình & cài đặt**, có thể bật tự đọc sau mỗi câu trả lời. Windows dùng giọng đã cài trên máy; chất lượng tiếng Việt phụ thuộc vào giọng có sẵn. |
 | Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **＋ Ảnh** cạnh ô chat, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |

@@ -181,12 +181,12 @@ class MiraApp(tk.Tk):
         self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
         self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
         tools = tk.Frame(sidebar, bg=SIDE)
-        tools.grid(row=6, column=0, sticky="ew", pady=(4, 0))
+        tools.grid(row=6, column=0, sticky="ew", pady=(7, 0))
         tools.grid_columnconfigure(0, weight=1)
         tk.Label(tools, text="CÔNG CỤ", bg=SIDE, fg=MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
                      row=0, column=0, sticky="ew", pady=(0, 6))
-        for row, (label, command) in enumerate((
+        shortcuts = (
             ("▤  Chọn thư mục", self._choose_folder),
             ("✦  Dạy Mira / bộ nhớ", self._show_memories),
             ("⚙  Mô hình & cài đặt", self._settings_dialog),
@@ -195,9 +195,23 @@ class MiraApp(tk.Tk):
             ("↻  Kiểm tra kết nối AI", self._check_ollama),
             ("?  Hướng dẫn cài AI", self._setup_guide),
             ("↑  Xuất cuộc trò chuyện", self._export_chat),
-        )):
-            self._button(tools, label, command, subtle=True, compact=True).grid(
-                row=row + 1, column=0, sticky="ew", pady=2)
+        )
+        menu = tk.Menu(self, tearoff=False, bg=PANEL, fg=TEXT,
+                       activebackground=SURFACE, activeforeground=TEXT,
+                       font=("Segoe UI", 10), borderwidth=1)
+        for label, command in shortcuts:
+            menu.add_command(label=label, command=command)
+
+        def show_tools():
+            try:
+                menu.tk_popup(open_tools.winfo_rootx() + 6,
+                              open_tools.winfo_rooty() - 8 * 34)
+            finally:
+                menu.grab_release()
+
+        open_tools = self._button(tools, "☰  Mở tất cả công cụ", show_tools,
+                                  compact=True, background=SURFACE)
+        open_tools.grid(row=1, column=0, sticky="ew")
 
         main = tk.Frame(self, bg=BG, padx=20, pady=15)
         main.grid(row=0, column=1, sticky="nsew")
