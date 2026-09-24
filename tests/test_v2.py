@@ -71,6 +71,10 @@ class VisibleComposerTests(unittest.TestCase):
                         self.assertLessEqual(app.input.winfo_rooty() + app.input.winfo_height(),
                                              app.winfo_rooty() + app.winfo_height())
                         self.assertIn("Gửi", app.send_button.cget("text"))
+                        self.assertTrue(app.copy_button.winfo_ismapped())
+                        app.chats.append(app.active_chat_id, "assistant", "Câu trả lời thử")
+                        app._copy_last_answer()
+                        self.assertEqual(app.clipboard_get(), "Câu trả lời thử")
                         app._model_lab_dialog()
                         app.update()
                         self.assertTrue(any(child.title() == "Mô hình mạnh & tốc độ"

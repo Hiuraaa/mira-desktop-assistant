@@ -3,53 +3,91 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#142136">
+  <meta name="theme-color" content="#101d30">
   <title>Mira trên điện thoại</title>
   <style>
-    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #0b1423; color: #f3f8fc; --mint: #70e4c5; --muted: #acc2d2;
+      --panel: #192b41; --border: #344c65; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: #0c1422; color: #f5f8fd; }
-    main { width: min(100%, 720px); min-height: 100dvh; margin: auto; display: flex; flex-direction: column; }
-    header { padding: 20px 18px 12px; background: #142136; }
-    h1 { color: #6ce0c5; margin: 0 0 5px; font-size: 27px; }
-    h2 { margin: 0 0 13px; font-size: 21px; }
-    p { line-height: 1.45; }
-    small, .hint { color: #acc1d4; }
-    .view { padding: 18px; }
-    .card { border-radius: 16px; background: #1b2b42; padding: 18px; margin: 0 0 16px; }
+    body { margin: 0; }
+    main { width: min(100%, 760px); min-height: 100dvh; margin: auto; display: flex; flex-direction: column;
+      background: #101d30; border-inline: 1px solid #20354d; }
+    header { padding: 26px 22px 18px; background: linear-gradient(145deg, #203750, #101d30 72%); }
+    .eyebrow { color: var(--mint); font-size: 12px; font-weight: 750; letter-spacing: .12em;
+      text-transform: uppercase; margin: 0 0 8px; }
+    h1 { margin: 0; font-size: 31px; line-height: 1.2; letter-spacing: -.03em; }
+    h1 span { color: var(--mint); }
+    h2 { margin: 0 0 12px; font-size: 21px; letter-spacing: -.02em; }
+    p { line-height: 1.55; margin: 8px 0 15px; }
+    small, .hint { color: var(--muted); line-height: 1.5; }
+    header small { display: block; margin-top: 9px; }
+    .view { padding: 20px 22px 10px; }
+    .view[hidden], nav[hidden], button[hidden] { display: none; }
+    .card { border: 1px solid var(--border); border-radius: 18px; background: var(--panel);
+      padding: 20px; margin: 0 0 17px; box-shadow: 0 10px 28px #070e1a30; }
     .row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
     .row > * { flex: 1; }
-    input, textarea, select { width: 100%; padding: 13px 12px; margin: 6px 0 12px; font: inherit;
-      border: 1px solid #53718a; border-radius: 10px; background: #f7fbff; color: #152337; }
+    input, textarea, select { width: 100%; padding: 12px 14px; margin: 7px 0 16px;
+      font: inherit; border: 1px solid #47637e; border-radius: 11px; background: #102035;
+      color: #f3f8fc; outline: none; }
+    input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible,
+    a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+    input::placeholder, textarea::placeholder { color: #9ab2c5; }
     textarea { resize: vertical; min-height: 85px; }
-    label { font-size: 14px; color: #acc1d4; font-weight: 600; }
-    button, .button { display: inline-block; padding: 12px 15px; min-height: 44px; border: 0;
-      border-radius: 10px; background: #243b57; color: #f5f8fd; font: 600 15px system-ui;
-      text-align: center; text-decoration: none; cursor: pointer; }
-    button.primary { background: #6ce0c5; color: #152337; }
+    label { display: block; font-size: 14px; color: #d0e0eb; font-weight: 650; }
+    button, .button { display: inline-flex; justify-content: center; align-items: center;
+      padding: 11px 15px; min-height: 44px; border: 1px solid var(--border);
+      border-radius: 11px; background: #223850; color: #f3f8fc; font: 650 15px system-ui;
+      text-align: center; text-decoration: none; cursor: pointer; transition: background .15s ease; }
+    button:hover, .button:hover { background: #304c68; }
+    button.primary { border-color: var(--mint); background: var(--mint); color: #112a31; }
+    button.primary:hover { background: #a3f2db; }
     button:disabled { opacity: .55; cursor: wait; }
-    nav { display: flex; gap: 8px; padding: 10px 18px; background: #142136; }
-    nav button[aria-current="page"] { background: #6ce0c5; color: #152337; }
-    #messages { display: flex; flex-direction: column; gap: 12px; padding: 0 0 18px; }
-    .bubble { max-width: 94%; padding: 12px 14px; border-radius: 14px; line-height: 1.48;
-      white-space: pre-wrap; overflow-wrap: anywhere; background: #1b2b42; }
-    .bubble.me { align-self: flex-end; background: #295568; }
-    .bubble strong { display: block; margin-bottom: 4px; color: #6ce0c5; }
-    .bubble.me strong { color: #bad7ff; }
-    #chat-compose { position: sticky; bottom: 0; background: #0c1422; padding: 9px 0 16px; }
-    #chat-compose textarea { margin: 0 0 8px; min-height: 70px; }
-    #error { min-height: 22px; color: #ffc59f; margin: 10px 18px; }
-    .reminder { padding: 12px 0; border-top: 1px solid #38506b; }
+    nav { display: flex; gap: 5px; padding: 10px 22px; background: #101d30;
+      border-bottom: 1px solid #294158; position: sticky; top: 0; z-index: 2; }
+    nav button { flex: 1; border: 0; background: transparent; font-size: 14px; white-space: nowrap; }
+    nav button[aria-current="page"] { background: #2b504e; color: var(--mint); }
+    #chat-view { flex: 1; display: flex; flex-direction: column; }
+    #chat-view[hidden] { display: none; }
+    #messages { display: flex; flex: 1; flex-direction: column; justify-content: flex-end;
+      gap: 12px; min-height: 160px; padding: 0 0 18px; }
+    .bubble { max-width: 92%; padding: 12px 15px; border: 1px solid var(--border);
+      border-radius: 16px 16px 16px 4px; line-height: 1.5; white-space: pre-wrap;
+      overflow-wrap: anywhere; background: var(--panel); }
+    .bubble.me { align-self: flex-end; border-color: #3c7774; border-radius: 16px 16px 4px 16px;
+      background: #264d53; }
+    .bubble strong { display: block; margin-bottom: 5px; color: var(--mint); font-size: 13px; }
+    .bubble.me strong { color: #bcd5ff; }
+    .empty { align-self: center; text-align: center; max-width: 360px; border: 1px dashed var(--border);
+      border-radius: 18px; padding: 25px; margin: auto 0; }
+    #chat-compose { position: sticky; bottom: 0; margin: 0 -22px -10px;
+      background: #101d30; border-top: 1px solid #294158; padding: 15px 22px max(16px, env(safe-area-inset-bottom)); }
+    #chat-compose textarea { margin: 7px 0 9px; min-height: 66px; }
+    #chat-compose button { width: 100%; margin-bottom: 8px; }
+    #error { position: fixed; z-index: 4; top: 12px; left: 50%; transform: translateX(-50%);
+      width: min(calc(100% - 28px), 670px); color: #fff2da; background: #344657;
+      border: 1px solid #56718a; border-radius: 12px; padding: 10px 14px;
+      margin: 0; box-shadow: 0 12px 30px #0007; pointer-events: none; }
+    #error:empty { display: none; }
+    .reminder { padding: 14px 0; border-top: 1px solid var(--border); }
     .reminder strong { display: block; }
     .reminder small { display: block; margin: 5px 0 10px; }
     .reminder .row > * { flex: none; }
-    .foot { padding: 5px 18px 24px; font-size: 13px; }
-    @media (max-width: 400px) { header, .view { padding: 14px; } nav { padding: 8px 14px; } }
+    .foot { padding: 8px 22px 25px; font-size: 13px; }
+    .foot button { display: block; margin-top: 12px; }
+    @media (max-width: 430px) {
+      header { padding: 21px 16px 15px; } .view { padding: 16px 16px 8px; }
+      nav { padding: 8px 12px; } nav button { font-size: 13px; padding: 11px 5px; }
+      .card { padding: 16px; } #chat-compose { margin: 0 -16px -8px;
+        padding: 12px 16px max(14px, env(safe-area-inset-bottom)); }
+    }
   </style>
 </head>
 <body>
 <main>
-  <header><h1>✦ Mira</h1><small id="model">Trợ lý cá nhân trên điện thoại</small></header>
+  <header><p class="eyebrow">Trợ lý cá nhân · trên điện thoại</p>
+    <h1><span>✦</span> Mira</h1><small id="model">Đang kết nối với Mira…</small></header>
   <section class="view" id="pair-view" hidden>
     <div class="card">
       <h2>Ghép nối điện thoại</h2>
@@ -59,9 +97,10 @@
       <button class="primary" id="pair-button">Ghép nối</button>
     </div>
   </section>
-  <nav id="tabs" hidden>
-    <button id="tab-chat" aria-current="page">Trò chuyện</button>
-    <button id="tab-reminders">Lịch nhắc</button>
+  <nav id="tabs" aria-label="Chức năng" hidden>
+    <button id="tab-chat" aria-current="page" type="button">Trò chuyện</button>
+    <button id="tab-reminders" aria-current="false" type="button">Lịch nhắc</button>
+    <button id="tab-remote" aria-current="false" type="button">Điều khiển</button>
   </nav>
   <section class="view" id="chat-view" hidden>
     <div id="messages" aria-live="polite"></div>
@@ -69,7 +108,7 @@
       <label for="chat-text">Nhắn Mira</label>
       <textarea id="chat-text" maxlength="2000" placeholder="Hôm nay mình nên làm gì trước?"></textarea>
       <button class="primary" id="send-button">Gửi tin nhắn</button>
-      <small>Chat điện thoại lưu riêng. Mira không có quyền đọc/sửa file hoặc chạy lệnh từ trang này.</small>
+      <small>Chat trên điện thoại lưu riêng. Để dùng file trên máy tính, hãy mở Mira trên máy tính.</small>
     </div>
   </section>
   <section class="view" id="reminder-view" hidden>
@@ -93,12 +132,15 @@
       <p class="hint">Mira nhắc trên máy tính khi ứng dụng đang mở. Để điện thoại nhắc khi máy tính tắt, tải tệp .ics của lịch và thêm vào ứng dụng Lịch trên điện thoại.</p>
     </div>
     <div class="card"><h2>Lịch đã tạo</h2><div id="reminders"></div></div>
-    <div class="card"><h2>Điều khiển toàn bộ máy tính</h2>
-      <p>Dùng Chrome Remote Desktop để nhìn màn hình và điều khiển chuột/bàn phím. Cài và bật quyền truy cập từ xa trên máy tính trước.</p>
-      <a class="button" href="https://remotedesktop.google.com/access" target="_blank" rel="noopener noreferrer">Mở Remote Desktop</a>
+  </section>
+  <section class="view" id="remote-view" hidden>
+    <div class="card"><h2>Điều khiển máy tính</h2>
+      <p>Muốn nhìn màn hình và dùng chuột, bàn phím từ điện thoại? Cài Chrome Remote Desktop và bật truy cập từ xa trên máy tính, sau đó mở liên kết bên dưới và đăng nhập cùng tài khoản Google.</p>
+      <a class="button" href="https://remotedesktop.google.com/access" target="_blank" rel="noopener noreferrer">Mở Chrome Remote Desktop ↗</a>
+      <p class="hint">Máy tính phải đang bật, không ở chế độ ngủ và có mạng. Chức năng này do Chrome Remote Desktop cung cấp.</p>
     </div>
   </section>
-  <p id="error" role="status"></p>
+  <p id="error" role="status" aria-live="polite"></p>
   <footer class="foot"><small>Chỉ truy cập trong mạng riêng Tailscale; đóng Mira trên máy tính để ngắt kết nối.</small>
     <button id="logout" hidden>Ngắt ghép nối điện thoại</button></footer>
 </main>
@@ -124,8 +166,11 @@
     currentTab = name;
     $("chat-view").hidden = name !== "chat";
     $("reminder-view").hidden = name !== "reminders";
+    $("remote-view").hidden = name !== "remote";
     $("tab-chat").setAttribute("aria-current", name === "chat" ? "page" : "false");
     $("tab-reminders").setAttribute("aria-current", name === "reminders" ? "page" : "false");
+    $("tab-remote").setAttribute("aria-current", name === "remote" ? "page" : "false");
+    window.scrollTo({top: 0, behavior: "auto"});
     error("");
   }
   function showPaired(paired) {
@@ -134,14 +179,15 @@
     $("logout").hidden = !paired;
     $("chat-view").hidden = !paired || currentTab !== "chat";
     $("reminder-view").hidden = !paired || currentTab !== "reminders";
+    $("remote-view").hidden = !paired || currentTab !== "remote";
   }
   function renderMessages(messages) {
     const container = $("messages");
     container.replaceChildren();
     if (!messages.length) {
       const empty = document.createElement("p");
-      empty.className = "hint";
-      empty.textContent = "Chào bạn! Đây là cuộc trò chuyện riêng trên điện thoại.";
+      empty.className = "hint empty";
+      empty.textContent = "Chào bạn! Nhắn cho Mira ở bên dưới để bắt đầu cuộc trò chuyện trên điện thoại.";
       container.append(empty);
     }
     for (const item of messages) {
@@ -241,6 +287,15 @@
   });
   $("tab-chat").addEventListener("click", () => tab("chat"));
   $("tab-reminders").addEventListener("click", () => { tab("reminders"); refresh(); });
+  $("tab-remote").addEventListener("click", () => tab("remote"));
+  $("pair-code").addEventListener("keydown", event => {
+    if (event.key === "Enter") { event.preventDefault(); $("pair-button").click(); }
+  });
+  $("chat-text").addEventListener("keydown", event => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault(); $("send-button").click();
+    }
+  });
   $("logout").addEventListener("click", async () => {
     try { await request("/api/logout", {}); csrf = ""; showPaired(false); error("Đã ngắt ghép nối."); }
     catch (ex) { error(ex.message); }
