@@ -85,13 +85,15 @@ Mã ghép nối chỉ hiển thị trên máy tính. Kết nối điện thoại
 
 ## Bộ dữ liệu sở thích miễn phí
 
-Mira có sẵn `mira/preferences_starter.json` gồm các quy tắc trả lời và ví dụ cho dịch tự nhiên, hỗ trợ code, giao diện dễ đọc và xử lý lỗi máy tính. Lần chạy đầu, ứng dụng chép bộ mẫu vào `%LOCALAPPDATA%\Mira\preferences.json`; **từ đó chỉ sửa bản của bạn**. Bấm **Dạy Mira / bộ nhớ → Bộ sở thích** để xem, thêm, sửa, xóa, xuất hoặc nhập bộ JSON. Bạn cũng có thể khôi phục bộ mẫu nếu muốn.
+Mira có sẵn `mira/preferences_starter.json` gồm các quy tắc trả lời và ví dụ cho trò chuyện, dịch tự nhiên, hỗ trợ code, giao diện dễ đọc và xử lý lỗi máy tính. Lần chạy đầu, ứng dụng chép bộ mẫu vào `%LOCALAPPDATA%\Mira\preferences.json`; **từ đó chỉ sửa bản của bạn**. Bấm **Mở tất cả công cụ → Dạy Mira / bộ nhớ → Bộ sở thích** để xem, thêm, sửa, xóa, xuất hoặc nhập bộ JSON. Bạn cũng có thể khôi phục bộ mẫu nếu muốn; việc cập nhật file mẫu không tự ghi đè bộ sở thích đã chỉnh của bạn.
 
 Mira chỉ chọn **tối đa hai ví dụ liên quan** cho mỗi câu hỏi và giới hạn số ghi nhớ gửi vào mô hình để giữ tốc độ. Các ví dụ giúp định hướng cách trả lời; chúng **không huấn luyện lại trọng số**. Dữ liệu sở thích lưu trên máy, không cần tài khoản hay API trả phí khi dùng mô hình cục bộ đã tải. Khi chọn mô hình cloud, Mira gửi phần sở thích/ghi nhớ liên quan cùng yêu cầu đến Ollama Cloud sau khi bạn đồng ý.
 
 ### Chế độ Mira hoạt bát
 
-Chế độ này được bật mặc định sau khi cập nhật; bấm **✦ Mira hoạt bát** để chuyển nhanh sang giọng trợ lý thông thường. Mira trò chuyện tò mò, ứng biến và đôi lúc đùa nhẹ, nhưng vẫn đi thẳng vào việc và giữ thái độ nghiêm túc khi cần. Bạn có thể nhập sở thích riêng trong **Mô hình & cài đặt** và chỉnh các ví dụ trong **Bộ sở thích**; thay đổi chỉ áp dụng cho những tin nhắn gửi sau đó. Lựa chọn và ghi chú tính cách được giữ trong `%LOCALAPPDATA%\Mira\settings.json` qua các lần nâng cấp.
+Mira trả lời ngắn khi trò chuyện đơn giản, đi vào chi tiết khi bạn cần làm việc, và mặc định xưng **mình-bạn** nếu bạn chưa chọn cách xưng hô khác. Chế độ **✦ Mira hoạt bát** cho phép thêm chút dí dỏm trong chuyện đời thường mà không chèn trò đùa vào việc nghiêm túc; tắt để dùng giọng điềm tĩnh hơn. Giọng hội thoại mới áp dụng ngay cho tin nhắn gửi sau khi cài bản cập nhật, kể cả khi bạn đã có bộ sở thích riêng.
+
+Để Mira nói đúng gu, mở **Mô hình & cài đặt → Cách xưng hô, độ dài, mức độ hài hước** và nhập, ví dụ: “Xưng mình-bạn, thường trả lời 2–4 câu; bỏ chào đầu mỗi lượt; không dùng lời khen xã giao; giải thích kỹ khi tôi hỏi về code.” Bấm **Lưu**. Trong **Bộ sở thích**, bạn cũng có thể thêm vài cặp **câu hỏi → câu trả lời mẫu** do chính bạn viết; nhờ vậy Mira có ví dụ phù hợp khi gặp chủ đề tương tự. Thay đổi áp dụng từ tin nhắn sau đó, không cần huấn luyện mô hình hoặc trả tiền. Lựa chọn và ghi chú tính cách nằm trong `%LOCALAPPDATA%\Mira\settings.json` qua các lần nâng cấp.
 
 Đây là một tính cách hội thoại lấy cảm hứng từ AI VTuber, không phải bản sao mô hình, giọng nói hay nhân vật của Neuro-sama. Mira có gương mặt tối giản riêng, đổi nét khi đang tạo chữ/đọc thành tiếng; giọng đọc tùy chọn dùng giọng Windows trên máy. Mira chưa nhận lời nói từ microphone, xem màn hình liên tục, chơi game hay tự phát tin khi bạn không nhắn. Các thao tác file vẫn cần quyền và xác nhận như trước.
 
