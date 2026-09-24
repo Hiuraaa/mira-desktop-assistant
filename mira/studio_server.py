@@ -338,6 +338,7 @@ class StudioServer:
             raise ValueError("Tin nhắn cần từ 1 đến 3000 ký tự.")
         if not self._chat_lock.acquire(blocking=False):
             raise ValueError("Mira đang trả lời một tin nhắn khác.")
+        reserved = False
         try:
             config = self._tk(lambda: {"model": self.owner.model_var.get().strip(),
                                        "cloud": self.owner.cloud_consent, "chat_id": self.owner.active_chat_id,
@@ -358,15 +359,19 @@ class StudioServer:
             text = prompt.strip()
 
             def before():
+                if self.owner.busy:
+                    raise ValueError("Mira đang trả lời trong cửa sổ máy tính.")
                 chat_id = config["chat_id"]
                 history = self.owner.chats.messages(chat_id)
                 self.owner.chats.append(chat_id, "user", text + ("\n[Ảnh màn hình đã cấp]" if image else ""))
                 if self.owner.active_chat_id == chat_id:
                     self.owner._refresh_chat_list()
                     self.owner._render_chat()
+                self.owner.busy = True
                 return history
 
             history = self._tk(before)
+            reserved = True
             handler.send_response(HTTPStatus.OK)
             handler.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
             handler.send_header("Cache-Control", "no-store")
@@ -407,4 +412,9 @@ class StudioServer:
             except Exception as exc:
                 event({"type": "error", "error": str(exc)})
         finally:
+            if reserved and not self.owner.closed:
+                try:
+                    self._tk(lambda: setattr(self.owner, "busy", False))
+                except RuntimeError:
+                    pass
             self._chat_lock.release()

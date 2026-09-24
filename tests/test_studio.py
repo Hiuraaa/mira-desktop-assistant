@@ -118,6 +118,15 @@ class StudioHTTPTests(unittest.TestCase):
         owner.cloud_consent = False
         owner.desktop_enabled = False
         owner.desktop = DesktopController()
+        owner.preferences = type("Prefs", (), {"prompt_for": lambda _self, _text: ""})()
+        owner.web_var = _Value(False)
+        owner.fast_var = _Value(True)
+        owner.playful_var = _Value(False)
+        owner.deep_var = _Value(False)
+        owner.device_enabled = False
+        owner.persona_note = ""
+        owner.workspace = None
+        owner._approve_edit = lambda *_args: False
         owner.after = lambda _ms, fn: fn()
         owner._refresh_chat_list = lambda: None
         owner._render_chat = lambda: None
@@ -176,6 +185,24 @@ class StudioHTTPTests(unittest.TestCase):
         self.assertEqual(len(json.loads(self.get("/api/state")[1])["lessons"]), 1)
         self.assertEqual(self.post("/api/delete-lesson", {"id": lesson_id})[0], 200)
         self.assertEqual(self.post("/api/new-chat", {})[0], 200)
+
+    def test_streamed_chat_uses_existing_conversation_and_releases_busy(self):
+        class Client:
+            def chat(self, _model, _messages, _tools, *, on_token=None, **_kwargs):
+                if on_token:
+                    on_token("Chào bạn")
+                return {"message": {"content": "Chào bạn"}}
+        self.owner.agent = Agent(Client())
+        body = json.dumps({"text": "Mira ơi"}).encode()
+        req = urllib.request.Request(self.origin + "/api/chat", data=body,
+                 headers={"Content-Type": "application/json", "X-Mira-Session": self.server.token,
+                          "Origin": self.origin}, method="POST")
+        result = self.opener.open(req).read().decode()
+        self.assertIn('"type": "token"', result)
+        self.assertIn('"type": "done"', result)
+        self.assertEqual([m["role"] for m in self.owner.chats.messages(self.owner.active_chat_id)],
+                         ["user", "assistant"])
+        self.assertFalse(self.owner.busy)
 
 
 if __name__ == "__main__":
