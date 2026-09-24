@@ -57,7 +57,7 @@ class TelegramBot:
 
     def __init__(self, path: Path, token: str, agent, reminders, memories, preferences,
                  *, model: str, name: str, cloud_consent: bool, fast: bool,
-                 persona: str, persona_note: str, api=None):
+                 persona: str, persona_note: str, web_enabled: bool = False, api=None):
         self.api = api or TelegramAPI(token)
         self.agent, self.reminders = agent, reminders
         self.memories, self.preferences = memories, preferences
@@ -68,7 +68,8 @@ class TelegramBot:
             raise ValueError("Thông tin ghép nối Telegram không đúng định dạng.")
         self.binding = binding
         self.config = {"model": model, "name": name, "cloud_consent": cloud_consent,
-                       "fast": fast, "persona": persona, "persona_note": persona_note}
+                       "fast": fast, "persona": persona, "persona_note": persona_note,
+                       "web_enabled": web_enabled}
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -290,7 +291,8 @@ class TelegramBot:
             answer = self.agent.respond(text, self.chat.list(), config["model"],
                                         config["name"], memories, None, lambda *_: False,
                                         fast=config["fast"], persona=config["persona"],
-                                        persona_note=config["persona_note"])
+                                        persona_note=config["persona_note"],
+                                        web_enabled=config["web_enabled"])
             self.chat.append_exchange(text, answer)
             self._send(chat_id, answer)
 
