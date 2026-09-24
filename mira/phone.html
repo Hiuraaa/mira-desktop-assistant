@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101d30">
+  <meta name="theme-color" content="#111a2b">
   <title>Mira trên điện thoại</title>
   <style>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      background: #0b1423; color: #f3f8fc; --mint: #70e4c5; --muted: #acc2d2;
-      --panel: #192b41; --border: #344c65; }
+      background: #0b1220; color: #f5f4ff; --mint: #b5a0ff; --muted: #aeb9d0;
+      --panel: #19263b; --border: #31415b; }
     * { box-sizing: border-box; }
     body { margin: 0; }
     main { width: min(100%, 760px); min-height: 100dvh; margin: auto; display: flex; flex-direction: column;
-      background: #101d30; border-inline: 1px solid #20354d; }
-    header { padding: 26px 22px 18px; background: linear-gradient(145deg, #203750, #101d30 72%); }
+      background: #111a2b; border-inline: 1px solid #28334c; }
+    header { padding: 26px 22px 18px; background: linear-gradient(145deg, #343052, #111a2b 72%); }
     .eyebrow { color: var(--mint); font-size: 12px; font-weight: 750; letter-spacing: .12em;
       text-transform: uppercase; margin: 0 0 8px; }
     h1 { margin: 0; font-size: 31px; line-height: 1.2; letter-spacing: -.03em; }
@@ -30,7 +30,7 @@
     .row > * { flex: 1; }
     input, textarea, select { width: 100%; padding: 12px 14px; margin: 7px 0 16px;
       font: inherit; border: 1px solid #47637e; border-radius: 11px; background: #102035;
-      color: #f3f8fc; outline: none; }
+      color: #f5f4ff; outline: none; }
     input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible,
     a:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
     input::placeholder, textarea::placeholder { color: #9ab2c5; }
@@ -38,16 +38,16 @@
     label { display: block; font-size: 14px; color: #d0e0eb; font-weight: 650; }
     button, .button { display: inline-flex; justify-content: center; align-items: center;
       padding: 11px 15px; min-height: 44px; border: 1px solid var(--border);
-      border-radius: 11px; background: #223850; color: #f3f8fc; font: 650 15px system-ui;
+      border-radius: 11px; background: #24344d; color: #f5f4ff; font: 650 15px system-ui;
       text-align: center; text-decoration: none; cursor: pointer; transition: background .15s ease; }
     button:hover, .button:hover { background: #304c68; }
-    button.primary { border-color: var(--mint); background: var(--mint); color: #112a31; }
-    button.primary:hover { background: #a3f2db; }
+    button.primary { border-color: var(--mint); background: var(--mint); color: #211c38; }
+    button.primary:hover { background: #cbbdff; }
     button:disabled { opacity: .55; cursor: wait; }
-    nav { display: flex; gap: 5px; padding: 10px 22px; background: #101d30;
+    nav { display: flex; gap: 5px; padding: 10px 22px; background: #111a2b;
       border-bottom: 1px solid #294158; position: sticky; top: 0; z-index: 2; }
     nav button { flex: 1; border: 0; background: transparent; font-size: 14px; white-space: nowrap; }
-    nav button[aria-current="page"] { background: #2b504e; color: var(--mint); }
+    nav button[aria-current="page"] { background: #37335f; color: var(--mint); }
     #chat-view { flex: 1; display: flex; flex-direction: column; }
     #chat-view[hidden] { display: none; }
     #messages { display: flex; flex: 1; flex-direction: column; justify-content: flex-end;
@@ -55,14 +55,14 @@
     .bubble { max-width: 92%; padding: 12px 15px; border: 1px solid var(--border);
       border-radius: 16px 16px 16px 4px; line-height: 1.5; white-space: pre-wrap;
       overflow-wrap: anywhere; background: var(--panel); }
-    .bubble.me { align-self: flex-end; border-color: #3c7774; border-radius: 16px 16px 4px 16px;
-      background: #264d53; }
+    .bubble.me { align-self: flex-end; border-color: #5c5887; border-radius: 16px 16px 4px 16px;
+      background: #33345c; }
     .bubble strong { display: block; margin-bottom: 5px; color: var(--mint); font-size: 13px; }
     .bubble.me strong { color: #bcd5ff; }
     .empty { align-self: center; text-align: center; max-width: 360px; border: 1px dashed var(--border);
       border-radius: 18px; padding: 25px; margin: auto 0; }
     #chat-compose { position: sticky; bottom: 0; margin: 0 -22px -10px;
-      background: #101d30; border-top: 1px solid #294158; padding: 15px 22px max(16px, env(safe-area-inset-bottom)); }
+      background: #111a2b; border-top: 1px solid #303b57; padding: 15px 22px max(16px, env(safe-area-inset-bottom)); }
     #chat-compose textarea { margin: 7px 0 9px; min-height: 66px; }
     #chat-compose button { width: 100%; margin-bottom: 8px; }
     #error { position: fixed; z-index: 4; top: 12px; left: 50%; transform: translateX(-50%);

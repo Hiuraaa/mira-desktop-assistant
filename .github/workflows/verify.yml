@@ -32,6 +32,53 @@ jobs:
       - name: Run tests on Windows
         if: runner.os == 'Windows'
         run: python -m unittest discover -s tests -v
+      - name: Capture desktop preview on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $env:MIRA_DATA_DIR = Join-Path $env:RUNNER_TEMP 'mira-preview-data'
+          $env:PYTHONPATH = $env:GITHUB_WORKSPACE
+          $previewFile = Join-Path $env:RUNNER_TEMP 'mira_preview.py'
+          @'
+          from mira.gui import MiraApp
+
+          app = MiraApp()
+          width = min(1500, app.winfo_screenwidth() - 20)
+          height = min(900, app.winfo_screenheight() - 65)
+          app.geometry(f"{width}x{height}+10+10")
+          app.chats.append(app.active_chat_id, "user", "Giúp tôi lên kế hoạch học Python mỗi ngày nhé.")
+          app.chats.append(app.active_chat_id, "assistant", "Mình sẽ chia việc thành các bước ngắn, dễ bắt đầu.\n\n1. Dành 10 phút ôn kiến thức cũ.\n2. Dành 15 phút làm một bài tập nhỏ.\n3. Ghi lại điều còn thắc mắc để hỏi Mira.\n\nBạn muốn bắt đầu từ chủ đề nào?")
+          app._refresh_chat_list()
+          app._render_chat()
+          app.after(15000, app._close)
+          app.mainloop()
+          '@ | Set-Content -Path $previewFile -Encoding utf8
+          $preview = Start-Process -FilePath python -ArgumentList $previewFile -PassThru
+          try {
+            Start-Sleep -Seconds 3
+            Add-Type -AssemblyName System.Windows.Forms
+            Add-Type -AssemblyName System.Drawing
+            $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
+            $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+            try {
+              $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+              $bitmap.Save((Join-Path $env:GITHUB_WORKSPACE 'mira-preview.png'))
+            } finally {
+              $graphics.Dispose()
+              $bitmap.Dispose()
+            }
+          } finally {
+            Stop-Process -Id $preview.Id -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Windows'
+        with:
+          name: Mira-UI-preview
+          path: mira-preview.png
+          if-no-files-found: warn
+          retention-days: 7
 
   package:
     name: Make downloadable ZIP

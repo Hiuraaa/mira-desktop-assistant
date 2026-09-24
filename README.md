@@ -7,8 +7,8 @@ Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Vi
 1. Cài [Python 3.11+](https://www.python.org/downloads/) và chọn **Add python.exe to PATH** trong trình cài đặt.
 2. Cài [Ollama cho Windows](https://ollama.com/download/windows) và mở Ollama.
 3. Nếu dùng AI trên máy, mở PowerShell, chạy `ollama pull qwen3:4b` và đợi tải xong. Nếu máy yếu, bỏ qua bước tải mô hình lớn và làm theo mục **AI cloud cho máy yếu** bên dưới.
-4. Giải nén ZIP, nhấn đúp **`start_windows.bat`**. Không cần `pip install` cho bản cơ bản.
-5. Màn hình mở thẳng vào chat: ô **NHẮN MIRA** nằm ngay dưới vùng hội thoại. Nhập câu hỏi rồi bấm **Gửi** hoặc Enter. **Shift+Enter** xuống dòng. Thanh trạng thái phía trên cho biết Ollama đã sẵn sàng chưa; bấm **Cách cài** nếu cần. Bấm **Sao chép** để lấy câu trả lời mới nhất, hoặc **Lịch nhắc** ở phía trên để đặt lời nhắc nhanh.
+4. Giải nén ZIP, nhấn đúp **`start_windows.bat`**. Nếu đã cài Mira trước đó, hãy đóng cửa sổ Mira cũ rồi chép đè toàn bộ file của ZIP mới vào đúng thư mục đang chạy `start_windows.bat`; mở lại ứng dụng để thấy giao diện mới. Không cần `pip install` cho bản cơ bản.
+5. Màn hình mở thẳng vào chat: mỗi tin nhắn nằm trong thẻ riêng giữa màn hình; ô **NHẮN MIRA** ở cuối trang. Bấm **Gửi** hoặc Enter; **Shift+Enter** xuống dòng. Bốn gợi ý bắt đầu hiện khi mở cuộc trò chuyện mới. Khi cửa sổ đủ rộng, bảng **TRUNG TÂM MIRA** bên phải có trạng thái mô hình và lối tắt; thu nhỏ cửa sổ vẫn dùng được qua thanh bên và ô soạn. Bấm **Sao chép** trên từng thẻ để lấy nội dung tin đó, hoặc ở cuối trang để lấy câu trả lời mới nhất.
 
 Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 
@@ -41,15 +41,15 @@ Nút **Đo tốc độ** cho các mô hình đã cài tạo một câu ngắn tr
 | --- | --- |
 | Trò chuyện | Nhập ở **NHẮN MIRA**, bấm Gửi. Lỗi kết nối có nút **Thử gửi lại**. |
 | Giữ nhiều cuộc trò chuyện | Bấm **+ Cuộc trò chuyện mới**; chọn lịch sử ở cột trái. Có thể đổi tên, xóa hoặc xuất cuộc trò chuyện hiện tại ra `.txt`. |
-| Làm việc với code/file | Bấm **Chọn thư mục làm việc** rồi **Chọn file** để điền đường dẫn vào ô chat. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
+| Làm việc với code/file | Bấm **Chọn thư mục** ở thanh bên rồi **＋ File** cạnh ô chat để điền đường dẫn. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
 | Sửa file | Mira hiển thị diff đầy đủ. Chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi. |
 | Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
-| Chạy kiểm thử dự án | Bấm **Chạy kiểm thử**. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
+| Chạy kiểm thử dự án | Bấm **▶ Kiểm thử** cạnh ô chat. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
 | Dạy dần | Bấm **Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
 | Chọn tính cách | Bật/tắt **✦ Mira hoạt bát** ngay phía trên hội thoại. Trong **Mô hình & cài đặt**, bạn có thể thêm vài dòng mô tả cách nói chuyện bạn thích rồi bấm **Lưu**. |
 | Nghe Mira trả lời | Sau một câu trả lời, bấm **🔊 Nghe**; bấm lại để dừng. Trong **Mô hình & cài đặt**, có thể bật tự đọc sau mỗi câu trả lời. Windows dùng giọng đã cài trên máy; chất lượng tiếng Việt phụ thuộc vào giọng có sẵn. |
-| Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **Đính kèm ảnh**, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
-| Trò chuyện từ điện thoại | Bấm **📱 Điện thoại & lịch nhắc** ở thanh bên, làm theo hướng dẫn ghép nối phía dưới. |
+| Hỏi về ảnh màn hình | Tự chụp/lưu ảnh PNG hoặc JPEG, bấm **＋ Ảnh** cạnh ô chat, chọn file, rồi gửi. Chạy `ollama pull qwen3-vl:4b` rồi chọn mô hình này trong **Mô hình & cài đặt**; `qwen3:4b` mặc định chỉ dùng cho văn bản. Ảnh chỉ gửi trong lượt đó, lịch sử lưu tên file chứ không lưu ảnh. |
+| Trò chuyện từ điện thoại | Bấm **Điện thoại & lịch nhắc** ở thanh bên, làm theo hướng dẫn ghép nối phía dưới. |
 | Đặt lịch nhắc | Bấm **Lịch nhắc** trong mục điện thoại; nhập ngày giờ hoặc nhờ Mira điền bản nháp, kiểm tra rồi bấm **Lưu lịch**. |
 | Nhận nhắc qua Telegram | Tạo bot riêng bằng @BotFather, mở **Điện thoại & lịch nhắc → Nhắc qua Telegram**, ghép nối bằng mã. Bấm **Lưu lịch** trên bot để xác nhận. |
 
