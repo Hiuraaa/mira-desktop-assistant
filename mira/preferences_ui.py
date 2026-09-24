@@ -9,10 +9,10 @@ from tkinter import filedialog, messagebox, simpledialog
 from .preferences import PreferenceStore
 from .storage import save_json
 
-BG = "#0b1423"
-PANEL = "#192b41"
-TEXT = "#f3f8fc"
-MUTED = "#acc2d2"
+BG = "#0b1220"
+PANEL = "#19263b"
+TEXT = "#f5f4ff"
+MUTED = "#aeb9d0"
 
 
 def open_preference_dialog(parent: tk.Tk, store: PreferenceStore, button):

@@ -63,18 +63,41 @@ class VisibleComposerTests(unittest.TestCase):
                     try:
                         app.geometry("900x520")
                         app.update()
-                        self.assertTrue(app.input.winfo_ismapped())
+                        self.assertTrue(app.input.winfo_ismapped(),
+                                        f"root={app.winfo_width()}x{app.winfo_height()} "
+                                        f"desk={app.desk.winfo_width()}x{app.desk.winfo_height()} "
+                                        f"desk_mapped={app.desk.winfo_ismapped()} "
+                                        f"rail_mapped={app.side_panel.winfo_ismapped()}")
                         self.assertTrue(app.send_button.winfo_ismapped())
                         self.assertTrue(app.avatar.winfo_ismapped())
                         self.assertTrue(app.phone_button.winfo_ismapped())
+                        self.assertTrue(app.feed_canvas.winfo_ismapped())
+                        self.assertTrue(app.starters.winfo_ismapped())
+                        self.assertGreater(app.feed_canvas.winfo_height(), 100)
+                        self.assertFalse(app.side_panel.winfo_ismapped())
                         self.assertGreater(app.input.winfo_height(), 30)
                         self.assertLessEqual(app.input.winfo_rooty() + app.input.winfo_height(),
                                              app.winfo_rooty() + app.winfo_height())
                         self.assertIn("Gửi", app.send_button.cget("text"))
                         self.assertTrue(app.copy_button.winfo_ismapped())
                         app.chats.append(app.active_chat_id, "assistant", "Câu trả lời thử")
+                        app._render_chat()
+                        app.update()
+                        self.assertEqual(len(app._message_labels), 1)
+                        self.assertEqual(app._message_labels[0].cget("text"), "Câu trả lời thử")
+                        app.stream_text = "Mira đang trả lời"
+                        app._show_pending("Mira")
+                        app.stream_text = "Đã thêm chữ"
+                        app._show_pending("Mira")
+                        self.assertEqual(app._pending_label.cget("text"), "Đã thêm chữ")
+                        app._remove_pending()
                         app._copy_last_answer()
                         self.assertEqual(app.clipboard_get(), "Câu trả lời thử")
+                        app.geometry("1600x900")
+                        app.update()
+                        if app.side_panel.master.winfo_width() >= 1280:
+                            self.assertTrue(app.side_panel.winfo_ismapped())
+                        self.assertLessEqual(app.desk.winfo_width(), 900)
                         app._model_lab_dialog()
                         app.update()
                         self.assertTrue(any(child.title() == "Mô hình mạnh & tốc độ"
