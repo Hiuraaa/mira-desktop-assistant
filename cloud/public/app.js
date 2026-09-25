@@ -29,6 +29,22 @@ function el(tag, className, text) {
   return item;
 }
 
+function renderAssistantText(container, text) {
+  const lines = text.split('\n');
+  lines.forEach((line, index) => {
+    // Render only simple emphasis and list markers. All model text remains text nodes.
+    const readable = line.replace(/^\s*[-*]\s+(?=\S)/, '• ');
+    let offset = 0;
+    for (const match of readable.matchAll(/\*\*([^*\n]+)\*\*/g)) {
+      container.append(document.createTextNode(readable.slice(offset, match.index)));
+      container.append(el('strong', '', match[1]));
+      offset = match.index + match[0].length;
+    }
+    container.append(document.createTextNode(readable.slice(offset)));
+    if (index < lines.length - 1) container.append(document.createTextNode('\n'));
+  });
+}
+
 function renderMessages() {
   const box = $('conversation');
   box.replaceChildren();
@@ -40,7 +56,9 @@ function renderMessages() {
   for (const message of state.messages) {
     const row = el('article', `bubble ${message.role}`);
     const who = el('div', 'who', message.role === 'user' ? 'Bạn' : 'Mira');
-    const content = el('div', 'bubble-text', message.content);
+    const content = el('div', 'bubble-text');
+    if (message.role === 'assistant') renderAssistantText(content, message.content);
+    else content.textContent = message.content;
     const when = el('time', 'time', timeLabel(message.created_at));
     row.append(who, content, when);
     box.append(row);
