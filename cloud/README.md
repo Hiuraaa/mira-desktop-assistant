@@ -19,6 +19,8 @@ Chọn **Workers Free** của Cloudflare, không đăng ký gói trả phí ho�
 
 **Sau khi sửa web:** mở PowerShell trong đúng thư mục `cloud` đã cài (có file `wrangler.toml`), chạy `npx.cmd wrangler deploy` rồi tải lại trang trên điện thoại. Lệnh này cập nhật `public/` và `worker.mjs` lên cùng Worker cũ; không cần chạy lại `setup.py` vì script thiết lập sẽ tạo khóa đăng nhập mới. Nếu PowerShell báo không chạy được `npx.ps1` do Execution Policy, dùng `npx.cmd` như trên, không cần đổi chính sách chạy script.
 
+Nếu vừa cập nhật cách Mira trả lời, hãy gửi một tin nhắn mới để thử; các câu trả lời cũ trong lịch sử không tự đổi. Bạn có thể chọn **Trò chuyện → Xóa lịch sử** để bắt đầu lại, nhưng thao tác này cũng xóa lịch sử chat qua Telegram trên cùng Mira cloud.
+
 ## Nhận lịch qua Telegram khi laptop tắt
 
 1. Vào [@BotFather](https://t.me/BotFather) tạo **bot mới**, giữ token riêng. Không dùng cùng token của bot Mira desktop: Telegram webhook trên cloud sẽ ngăn bot long polling trên PC nhận tin.
