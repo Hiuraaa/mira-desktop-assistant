@@ -86,7 +86,7 @@ function showTab(tab) {
     if (item.dataset.tab === tab) item.setAttribute('aria-current', 'page');
     else item.removeAttribute('aria-current');
   }
-  window.scrollTo({ top: 0, behavior: 'instant' });
+  window.scrollTo({ top: 0, behavior: 'auto' });
 }
 
 async function openMira() {

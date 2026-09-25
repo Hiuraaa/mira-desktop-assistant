@@ -9,3 +9,4 @@ __pycache__/
 cloud/.wrangler/
 cloud/node_modules/
 cloud/.dev.vars*
+cloud/wrangler.toml

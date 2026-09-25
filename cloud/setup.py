@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 CONFIG = ROOT / "wrangler.toml"
+TEMPLATE = ROOT / "wrangler.toml.example"
 PLACEHOLDER = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
 UUID = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b", re.I)
 
@@ -32,16 +33,16 @@ def main() -> None:
     input("Nhấn Enter để mở trang đăng nhập Cloudflare…")
     wrangler("login")
 
-    config = CONFIG.read_text(encoding="utf-8")
-    if PLACEHOLDER in config:
+    if not CONFIG.is_file():
         print("Đang tạo cơ sở dữ liệu D1 của riêng bạn…")
-        output = wrangler("d1", "create", "mira-phone", capture=True)
+        wrangler("d1", "create", "mira-phone", "--no-update-config")
+        output = wrangler("d1", "info", "mira-phone", "--json", capture=True)
         match = UUID.search(output)
         if not match:
             print(output)
             raise RuntimeError("Chưa đọc được ID D1. Xem cloud/README.md để điền thủ công.")
-        CONFIG.write_text(config.replace(PLACEHOLDER, match.group()), encoding="utf-8")
-        print("Đã ghi mã D1 vào wrangler.toml (không chứa mật khẩu).")
+        CONFIG.write_text(TEMPLATE.read_text(encoding="utf-8").replace(PLACEHOLDER, match.group()), encoding="utf-8")
+        print("Đã tạo wrangler.toml với mã D1 (không chứa mật khẩu).")
     print("Đang tạo bảng lịch nhắc và cuộc trò chuyện…")
     wrangler("d1", "migrations", "apply", "mira-phone", "--remote")
     print("Đang đưa Mira lên cloud…")

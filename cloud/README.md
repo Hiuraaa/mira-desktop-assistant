@@ -15,7 +15,7 @@ Chọn **Workers Free** của Cloudflare, không đăng ký gói trả phí ho�
 3. **Lưu khóa được in ra cuối lệnh** trong trình quản lý mật khẩu. Ghi lại URL `https://mira-phone.<subdomain>.workers.dev/` mà lệnh deploy in ra. Mở URL đó trên điện thoại, nhập khóa, chat thử. Bạn có thể thêm trang vào màn hình chính bằng menu trình duyệt. Mở lại từ thẻ mới sẽ phải nhập khóa; thẻ cũ giữ khóa trong phiên trình duyệt.
 4. Chọn **Ghi nhớ** trong trang điện thoại, tự nhập vài sở thích hoặc chép ghi chú phù hợp từ Mira trên PC. Dữ liệu ghi vào tài khoản Cloudflare của bạn và được gửi tới model Workers AI khi chat.
 
-**Nếu muốn làm thủ công** (trong thư mục `cloud`): chạy `npx wrangler login`, `npx wrangler d1 create mira-phone`, chép `database_id` nhận được vào `wrangler.toml` thay `REPLACE_WITH_YOUR_D1_DATABASE_ID`, chạy `npx wrangler d1 migrations apply mira-phone --remote`, `npx wrangler deploy`, rồi `npx wrangler secret put MIRA_ACCESS_KEY` và nhập một khóa bí mật tự tạo từ 24 ký tự trở lên. Không commit khóa vào GitHub. Lần sau cập nhật mã chỉ cần `npx wrangler deploy`; dữ liệu D1 vẫn giữ nguyên.
+**Nếu muốn làm thủ công** (trong thư mục `cloud`): chạy `npx wrangler login`, `npx wrangler d1 create mira-phone --no-update-config`, **sau đó** chép `wrangler.toml.example` thành `wrangler.toml`, thay `REPLACE_WITH_YOUR_D1_DATABASE_ID` bằng `database_id` lệnh vừa in ra; tiếp tục `npx wrangler d1 migrations apply mira-phone --remote`, `npx wrangler deploy`, `npx wrangler secret put MIRA_ACCESS_KEY` và nhập một khóa bí mật tự tạo từ 24 ký tự trở lên. Không commit khóa vào GitHub. Lần sau cập nhật mã chỉ cần `npx wrangler deploy`; dữ liệu D1 vẫn giữ nguyên.
 
 ## Nhận lịch qua Telegram khi laptop tắt
 
