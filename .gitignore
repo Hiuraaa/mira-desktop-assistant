@@ -6,3 +6,6 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 *.log
+cloud/.wrangler/
+cloud/node_modules/
+cloud/.dev.vars*

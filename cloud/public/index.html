@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d1424">
+  <meta name="description" content="Chat và nhận nhắc lịch từ Mira, kể cả khi laptop đang tắt.">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/app.css">
+  <title>Mira · luôn ở bên bạn</title>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login-shell">
+    <div class="login-card">
+      <div class="brand-mark" aria-hidden="true">✦</div>
+      <span class="eyebrow">MIRA · TRỢ LÝ CỦA BẠN</span>
+      <h1>Đi cùng bạn,<br><em>kể cả khi laptop tắt.</em></h1>
+      <p>Chat, lưu điều Mira nên nhớ và đặt lịch nhắc ngay trên điện thoại.</p>
+      <form id="login-form">
+        <label for="access-key">Khóa truy cập cá nhân</label>
+        <input id="access-key" type="password" autocomplete="current-password" minlength="24" required placeholder="Nhập khóa bạn đã tạo khi cài Mira">
+        <button class="btn primary wide" type="submit">Vào gặp Mira <span aria-hidden="true">↗</span></button>
+      </form>
+      <p id="login-error" class="form-error" role="alert"></p>
+      <small>Khóa chỉ giữ trong thẻ trình duyệt này. Mira chạy trên cloud, không cần laptop đang bật.</small>
+    </div>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <header class="app-head">
+      <div class="brand">
+        <div class="brand-mark small" aria-hidden="true">✦</div>
+        <div><strong>Mira</strong><span>Không gian riêng của bạn</span></div>
+      </div>
+      <div class="live-badge"><span class="live-dot" aria-hidden="true"></span><span id="cloud-state">Cloud đang kết nối</span></div>
+    </header>
+
+    <main>
+      <section id="chat" class="panel active" aria-label="Trò chuyện">
+        <div class="panel-intro">
+          <span class="eyebrow">CHÀO BẠN, MÌNH Ở ĐÂY</span>
+          <h2>Cần Mira giúp gì<br>hôm nay?</h2>
+          <p>Nhắn như bình thường. Mira nhớ cuộc trò chuyện này trên điện thoại và Telegram.</p>
+        </div>
+        <div id="conversation" class="conversation" aria-live="polite" aria-label="Tin nhắn với Mira"></div>
+        <div id="chat-status" class="status-line" role="status"></div>
+        <form id="chat-form" class="composer">
+          <label for="message" class="sr-only">Nhắn cho Mira</label>
+          <textarea id="message" rows="2" maxlength="1500" placeholder="Nhắn cho Mira…" required></textarea>
+          <button id="send" class="send-btn" type="submit" aria-label="Gửi tin nhắn">↗</button>
+        </form>
+        <div class="chat-options"><span>Enter để gửi · Shift+Enter xuống dòng</span><button id="clear-chat" type="button" class="text-button">Xóa lịch sử</button></div>
+      </section>
+
+      <section id="reminders" class="panel" hidden aria-label="Lịch nhắc">
+        <div class="panel-intro">
+          <span class="eyebrow">ĐỂ MIRA NHỚ CHO BẠN</span>
+          <h2>Lịch của bạn.</h2>
+          <p>Đặt lịch ở đây hoặc nhắn bot Telegram. Mira gửi tin nhắc qua Telegram ngay cả khi laptop tắt.</p>
+        </div>
+        <div id="telegram-hint" class="notice"></div>
+        <form id="reminder-form" class="surface form-stack">
+          <label for="reminder-text">Nhắc mình về</label>
+          <input id="reminder-text" maxlength="240" placeholder="Ví dụ: Học tiếng Anh 20 phút" required>
+          <label for="reminder-time">Khi nào?</label>
+          <input id="reminder-time" type="datetime-local" required>
+          <button id="add-reminder" class="btn primary" type="submit">+ Thêm lịch nhắc</button>
+        </form>
+        <div class="section-title"><h3>Sắp tới</h3><span id="reminder-count" class="count"></span></div>
+        <div id="reminder-list" class="reminder-list" aria-live="polite"></div>
+        <p id="reminder-status" class="status-line" role="status"></p>
+      </section>
+
+      <section id="memory" class="panel" hidden aria-label="Mira ghi nhớ">
+        <div class="panel-intro">
+          <span class="eyebrow">HIỂU BẠN HƠN MỖI NGÀY</span>
+          <h2>Điều Mira<br>nên biết.</h2>
+          <p>Ghi vài sở thích, cách xưng hô hoặc mục tiêu. Mira dùng ghi chú này để điều chỉnh câu trả lời, không huấn luyện lại mô hình.</p>
+        </div>
+        <form id="memory-form" class="surface form-stack">
+          <label for="notes">Ghi chú cá nhân</label>
+          <textarea id="notes" rows="9" maxlength="1600" placeholder="Ví dụ: Gọi mình là anh Đồng. Mình thích giải thích ngắn gọn, kèm ví dụ thực tế…"></textarea>
+          <div class="form-footer"><span id="note-count">0 / 1600</span><button class="btn primary" type="submit">Lưu cho Mira</button></div>
+        </form>
+        <p id="memory-status" class="status-line" role="status"></p>
+        <div class="notice">Ghi chú và tin nhắn được lưu trong tài khoản Cloudflare của bạn. Chỉ nhập điều bạn muốn gửi đến mô hình AI cloud.</div>
+      </section>
+
+      <section id="computer" class="panel" hidden aria-label="Máy tính">
+        <div class="panel-intro">
+          <span class="eyebrow">KẾT NỐI MÁY TÍNH</span>
+          <h2>Máy bật thì<br>mình giúp tiếp.</h2>
+          <p>Chat và lịch nhắc hoạt động độc lập trên cloud. Mira không thể đọc pin, màn hình hoặc file của laptop đang tắt.</p>
+        </div>
+        <div class="surface computer-card">
+          <div class="feature-icon" aria-hidden="true">⌁</div>
+          <h3>Khi laptop đang bật</h3>
+          <p>Trên PC, mở Mira → Điện thoại & lịch nhắc → bật giao diện Tailscale và cấp riêng từng quyền cần dùng. Sau đó bạn có thể mở liên kết riêng của PC dưới đây.</p>
+          <label for="computer-url">Địa chỉ Tailscale của máy tính (chỉ lưu trên điện thoại này)</label>
+          <input id="computer-url" type="url" inputmode="url" placeholder="https://ten-may.ten-mang.ts.net/">
+          <a id="computer-link" class="btn secondary disabled-link" href="#" target="_blank" rel="noopener noreferrer">Mở Mira trên laptop ↗</a>
+          <p id="computer-status" class="form-error" role="status"></p>
+        </div>
+        <div class="notice">Mira cloud không tự cấp quyền điều khiển PC. Nếu laptop ngủ hoặc tắt, hãy bật máy trước khi mở địa chỉ Tailscale.</div>
+        <button id="logout" class="text-button logout" type="button">Khóa Mira trên điện thoại này</button>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="Điều hướng Mira">
+      <button type="button" class="nav-item active" data-tab="chat" aria-current="page"><span aria-hidden="true">✧</span> Trò chuyện</button>
+      <button type="button" class="nav-item" data-tab="reminders"><span aria-hidden="true">◷</span> Lịch nhắc</button>
+      <button type="button" class="nav-item" data-tab="memory"><span aria-hidden="true">♡</span> Ghi nhớ</button>
+      <button type="button" class="nav-item" data-tab="computer"><span aria-hidden="true">▣</span> Máy tính</button>
+    </nav>
+  </div>
+</body>
+</html>

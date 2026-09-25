@@ -72,7 +72,6 @@ class MiraApp(tk.Tk):
         self.reminders = ReminderStore(self.path / "reminders.json")
         self.agent = Agent()
         self.phone_server: PhoneServer | None = None
-        self.studio = None
         self.telegram_bot: TelegramBot | None = None
         self.telegram_token: str | None = None
         self.telegram_credentials_path = self.path / "telegram_credentials.json"
@@ -182,10 +181,10 @@ class MiraApp(tk.Tk):
                      row=1, column=0, sticky="ew", pady=(0, 23))
         self._button(sidebar, "＋  Cuộc trò chuyện mới", self._new_chat, primary=True).grid(
             row=2, column=0, sticky="ew", pady=(0, 11))
-        self.studio_button = self._button(sidebar, "✦  Mở Studio 3D",
-                                          self._open_studio, primary=True)
-        self.studio_button.grid(row=3, column=0, sticky="ew", pady=(0, 9))
-        self.phone_button = self._button(sidebar, "◈  Điện thoại & lịch nhắc",
+        self._button(sidebar, "☁  Điện thoại khi máy tắt",
+                     self._cloud_phone_dialog, primary=True).grid(row=3, column=0,
+                                                                  sticky="ew", pady=(0, 9))
+        self.phone_button = self._button(sidebar, "◈  Kết nối khi máy bật",
                                          self._mobile_dialog, background=SURFACE)
         self.phone_button.grid(row=4, column=0, sticky="ew", pady=(0, 16))
         archive = tk.Frame(sidebar, bg=SIDE)
@@ -221,7 +220,7 @@ class MiraApp(tk.Tk):
             ("◉  Bật / tắt xem trạng thái PC", self._toggle_device),
             ("▣  Chụp màn hình để hỏi Mira", self._attach_screen),
             ("✦  Nhân vật Mira", self._avatar_dialog),
-            ("✦  Studio 3D & bài học game", self._open_studio),
+            ("☁  Mira trên điện thoại khi máy tắt", self._cloud_phone_dialog),
             ("?  Hướng dẫn cài AI", self._setup_guide),
             ("↑  Xuất cuộc trò chuyện", self._export_chat),
         )
@@ -266,7 +265,7 @@ class MiraApp(tk.Tk):
                                   image_path=self.custom_avatar_path if self.avatar_custom else None,
                                   command=self._avatar_dialog)
         self.avatar.pack(side="right", padx=(12, 0))
-        self._button(head, "✦ Studio 3D", self._open_studio, compact=True,
+        self._button(head, "☁ Điện thoại", self._cloud_phone_dialog, compact=True,
                      primary=True).pack(side="right", padx=(6, 0))
         self._button(head, "Lịch nhắc", self._reminders_dialog, compact=True,
                      background=SURFACE).pack(side="right", padx=(10, 0))
@@ -519,30 +518,6 @@ class MiraApp(tk.Tk):
             self.desktop_button.configure(text="🖱 Bật điều khiển máy")
             self.status_var.set("Đã tắt quyền điều khiển máy.")
 
-    def _open_studio(self):
-        if self.closed:
-            return
-        try:
-            if self.studio is None:
-                from .studio_server import StudioServer
-                self.studio = StudioServer(self)
-            self.studio.open()
-            self.status_var.set("Studio 3D đã mở trên trình duyệt của máy này. Giữ Mira đang chạy để dùng Studio.")
-        except (OSError, RuntimeError, ValueError) as exc:
-            messagebox.showerror("Không mở được Studio 3D", str(exc), parent=self)
-
-    def _ask_studio_screen(self) -> bool:
-        self.deiconify()
-        self.lift()
-        allowed = messagebox.askyesno(
-            "Chia sẻ một ảnh màn hình với Mira?",
-            "Mira sẽ chụp màn hình chính một lần sau 2 giây. Bạn có thể xem trước ở Studio "
-            "và chỉ gửi ảnh cùng tin nhắn khi bấm Gửi. Nếu dùng model cloud, ảnh được gửi tới "
-            "Ollama Cloud khi bạn gửi tin nhắn.\n\nBạn đồng ý chụp lần này?", parent=self)
-        if allowed:
-            self.iconify()
-        return allowed
-
     def _read_status_if_enabled(self):
         if not self.device_enabled:
             raise RuntimeError("Quyền đọc trạng thái PC đã bị tắt trên máy tính.")
@@ -570,9 +545,6 @@ class MiraApp(tk.Tk):
     def _close(self):
         self.closed = True
         self.lessons.stop_event.set()
-        if self.studio:
-            self.studio.stop()
-            self.studio = None
         self.device_enabled = False
         self.phone_screen_enabled = False
         self.phone_files_enabled = False
@@ -681,8 +653,8 @@ class MiraApp(tk.Tk):
 
         self._button(dialog, "＋ Dùng ảnh PNG nhân vật của bạn", import_png,
                      primary=True).pack(pady=(3, 5))
-        tk.Label(dialog, text="Ảnh PNG tĩnh dành cho giao diện Tk. Mở Studio 3D để nhập file VRM "
-                 "và tương tác với nhân vật ba chiều. Micro chưa được hỗ trợ.", bg=BG, fg=MUTED,
+        tk.Label(dialog, text="Ảnh PNG tĩnh dành cho giao diện Mira trên máy tính. "
+                 "Trang điện thoại cloud có biểu tượng 2D nhẹ, chạy cả khi laptop tắt.", bg=BG, fg=MUTED,
                  wraplength=475).pack(padx=18)
 
     def _refresh_chat_list(self):
@@ -1045,13 +1017,53 @@ class MiraApp(tk.Tk):
                      self._button)).pack(side="right")
         reload()
 
+    def _cloud_phone_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mira trên điện thoại khi laptop tắt")
+        dialog.geometry("640x510")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Mira đi cùng bạn", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=22, pady=(22, 7))
+        tk.Label(dialog, text="Giao diện điện thoại cloud chạy độc lập: chat, sở thích, "
+                 "lịch nhắc qua Telegram kể cả khi laptop đang tắt.", bg=BG, fg=MUTED,
+                 justify="left", wraplength=590).pack(anchor="w", padx=22)
+        tk.Label(dialog, text="CÀI MỘT LẦN, DÙNG TRÊN ĐIỆN THOẠI", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=22, pady=(22, 8))
+        steps = ("1. Tạo tài khoản Cloudflare Free và cài Node.js trên PC.\n"
+                 "2. Mở thư mục cloud trong bản Mira này, chạy python setup.py.\n"
+                 "3. Lưu khóa truy cập và URL *.workers.dev, mở URL trên điện thoại.\n"
+                 "4. Để Mira báo lịch trong Telegram: tạo bot riêng và chạy python setup_telegram.py.")
+        tk.Label(dialog, text=steps, bg=PANEL, fg=TEXT, padx=17, pady=17,
+                 justify="left", wraplength=570).pack(fill="x", padx=22)
+        tk.Label(dialog, text="Gói miễn phí có hạn mức. Lịch nhắc chỉ gửi thông báo khi đã "
+                 "cấu hình bot Telegram. Chat cloud và chat trong app PC lưu ở hai nơi riêng. "
+                 "Khi máy tắt, không thể xem pin, màn hình hay điều khiển máy.",
+                 bg=BG, fg=MUTED, justify="left", wraplength=580).pack(
+                     anchor="w", padx=22, pady=(14, 8))
+
+        def open_guide():
+            guide = Path(__file__).resolve().parent.parent / "cloud" / "README.md"
+            if not guide.is_file():
+                messagebox.showerror("Chưa có hướng dẫn", "Giải nén lại đầy đủ bản Mira mới, bao gồm thư mục cloud.", parent=dialog)
+                return
+            if sys.platform == "win32":
+                subprocess.Popen(["notepad.exe", str(guide)])
+            else:
+                webbrowser.open(guide.as_uri())
+
+        row = tk.Frame(dialog, bg=BG)
+        row.pack(anchor="w", padx=22, pady=(10, 0))
+        self._button(row, "Đọc hướng dẫn từng bước", open_guide, primary=True).pack(side="left")
+        self._button(row, "Kết nối máy đang bật", self._mobile_dialog).pack(side="left", padx=10)
+
     def _mobile_dialog(self):
         dialog = tk.Toplevel(self)
         dialog.title("Điện thoại & truy cập từ xa")
         dialog.geometry("700x745")
         dialog.configure(bg=BG)
         dialog.transient(self)
-        tk.Label(dialog, text="Chat với Mira từ điện thoại", bg=BG, fg=TEXT,
+        tk.Label(dialog, text="Kết nối với laptop đang bật", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
         instructions = ("1. Cài Tailscale trên máy tính và điện thoại; đăng nhập cùng tài khoản.\n"
                         "2. Bấm Bật giao diện dưới đây. Trong PowerShell trên máy tính chạy:\n"
@@ -1059,7 +1071,8 @@ class MiraApp(tk.Tk):
                         "3. Mở địa chỉ HTTPS do Tailscale in ra trên điện thoại, rồi nhập mã ghép nối.")
         tk.Label(dialog, text=instructions, bg=BG, fg=TEXT, wraplength=625,
                  justify="left").pack(anchor="w", padx=20)
-        tk.Label(dialog, text="Giao diện chỉ lắng nghe 127.0.0.1; dùng Tailscale Serve để "
+        tk.Label(dialog, text="Laptop phải đang bật và ứng dụng Mira đang chạy. Nếu laptop tắt, "
+                 "hãy dùng Mira cloud ở nút Điện thoại khi máy tắt. Giao diện này chỉ lắng nghe 127.0.0.1; dùng Tailscale Serve để "
                  "mở riêng cho các thiết bị trong mạng của bạn. Không dùng Funnel hoặc mở cổng router.",
                  bg=BG, fg=MUTED, wraplength=625, justify="left").pack(
                      anchor="w", padx=20, pady=(9, 12))
@@ -2238,5 +2251,4 @@ def main():
         messagebox.showerror("Không mở được Mira", str(exc))
         root.destroy()
         return
-    app.after(700, app._open_studio)
     app.mainloop()

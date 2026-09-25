@@ -1,0 +1,24 @@
+name = "mira-phone"
+main = "worker.mjs"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mira-phone"
+database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[vars]
+MIRA_TIMEZONE = "Asia/Ho_Chi_Minh"
+
+[triggers]
+crons = ["* * * * *"]
