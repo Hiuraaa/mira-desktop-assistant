@@ -82,6 +82,9 @@ test('phone chat shares bounded history and uses preferences, does not pretend P
   assert.equal(cloud.calls.length, 1);
   assert.equal(cloud.calls[0].model, '@cf/zai-org/glm-4.7-flash');
   assert.equal(cloud.calls[0].body.chat_template_kwargs.enable_thinking, false);
+  assert.equal(cloud.calls[0].body.temperature, 0.3);
+  assert.match(cloud.calls[0].body.messages[0].content, /đúng chính tả/);
+  assert.match(cloud.calls[0].body.messages[0].content, /Không lặp lại lỗi viết/);
   assert.match(cloud.calls[0].body.messages[0].content, /Không thể xem pin/);
   assert.match(cloud.calls[0].body.messages[0].content, /khoa học/);
   const data = await call(cloud, '/api/bootstrap');
