@@ -97,6 +97,37 @@ test('phone chat shares bounded history and uses preferences, does not pretend P
   assert.equal((await call(cloud, '/api/bootstrap')).result.messages.length, 0);
 });
 
+test('chat completes a cut-off answer and keeps long replies intact', async () => {
+  const cloud = env();
+  const calls = [];
+  cloud.AI.run = async (_model, body) => {
+    calls.push(body);
+    return calls.length === 1
+      ? { choices: [{ message: { content: 'Kẻ bất hạnh là' }, finish_reason: 'length' }] }
+      : { choices: [{ message: { content: `người chưa hiểu bản thân. ${'Giải thích thêm. '.repeat(290)}` }, finish_reason: 'stop' }] };
+  };
+  const response = await call(cloud, '/api/chat', 'POST', { text: 'Vì sao Sisyphus hạnh phúc?' });
+  assert.equal(response.status, 200);
+  assert.match(response.result.answer, /^Kẻ bất hạnh là người chưa hiểu bản thân\./);
+  assert.ok(response.result.answer.length > 4000);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].max_completion_tokens, 900);
+  assert.match(calls[1].messages.at(-1).content, /tiếp tục đúng chỗ vừa dừng/);
+  assert.equal((await call(cloud, '/api/bootstrap')).result.messages.at(-1).content, response.result.answer);
+});
+
+test('chat marks unfinished responses instead of silently ending mid-sentence', async () => {
+  const cloud = env();
+  let count = 0;
+  cloud.AI.run = async () => {
+    count++;
+    return { choices: [{ message: { content: count === 1 ? 'Kẻ bất hạnh là' : 'người vẫn còn' }, finish_reason: 'length' }] };
+  };
+  const response = await call(cloud, '/api/chat', 'POST', { text: 'Hãy giải thích' });
+  assert.equal(count, 3);
+  assert.match(response.result.answer, /Bạn nhắn “tiếp”/);
+});
+
 test('reminder rejects past time; cron sends once only for owner; refused Telegram retries', async () => {
   const cloud = env();
   const past = await call(cloud, '/api/reminders', 'POST', { content: 'Quá khứ', dueAt: new Date(Date.now() - 60_000).toISOString() });
@@ -137,6 +168,24 @@ test('webhook requires shared secret and owner ID; repeated update does not run 
     assert.equal(cloud.calls.length, 1);
     assert.equal(sent.length, 1);
     assert.equal(sent[0].chat_id, '123456789');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('Telegram sends every part of a long AI reply', async () => {
+  const cloud = env();
+  const reply = 'Đây là câu trả lời: ' + 'A'.repeat(4200);
+  cloud.AI.run = async () => ({ choices: [{ message: { content: reply }, finish_reason: 'stop' }] });
+  const messages = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    messages.push(JSON.parse(options.body).text);
+    return Response.json({ ok: true });
+  };
+  try {
+    const update = { update_id: 96, message: { text: 'Giải thích kỹ', from: { id: 123456789 }, chat: { id: 123456789, type: 'private' } } };
+    assert.equal((await call(cloud, '/telegram', 'POST', update, ACCESS_KEY, { 'X-Telegram-Bot-Api-Secret-Token': WEBHOOK_KEY })).status, 200);
+    assert.equal(messages.length, 2);
+    assert.equal(messages.join(''), reply);
   } finally { globalThis.fetch = realFetch; }
 });
 
