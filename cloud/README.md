@@ -15,7 +15,9 @@ Chọn **Workers Free** của Cloudflare, không đăng ký gói trả phí ho�
 3. **Lưu khóa được in ra cuối lệnh** trong trình quản lý mật khẩu. Ghi lại URL `https://mira-phone.<subdomain>.workers.dev/` mà lệnh deploy in ra. Mở URL đó trên điện thoại, nhập khóa, chat thử. Bạn có thể thêm trang vào màn hình chính bằng menu trình duyệt. Mở lại từ thẻ mới sẽ phải nhập khóa; thẻ cũ giữ khóa trong phiên trình duyệt.
 4. Chọn **Ghi nhớ** trong trang điện thoại, tự nhập vài sở thích hoặc chép ghi chú phù hợp từ Mira trên PC. Dữ liệu ghi vào tài khoản Cloudflare của bạn và được gửi tới model Workers AI khi chat.
 
-**Nếu muốn làm thủ công** (trong thư mục `cloud`): chạy `npx wrangler login`, `npx wrangler d1 create mira-phone --no-update-config`, **sau đó** chép `wrangler.toml.example` thành `wrangler.toml`, thay `REPLACE_WITH_YOUR_D1_DATABASE_ID` bằng `database_id` lệnh vừa in ra; tiếp tục `npx wrangler d1 migrations apply mira-phone --remote`, `npx wrangler deploy`, `npx wrangler secret put MIRA_ACCESS_KEY` và nhập một khóa bí mật tự tạo từ 24 ký tự trở lên. Không commit khóa vào GitHub. Lần sau cập nhật mã chỉ cần `npx wrangler deploy`; dữ liệu D1 vẫn giữ nguyên.
+**Nếu muốn làm thủ công** (trong thư mục `cloud`): trên Windows PowerShell, chạy `npx.cmd wrangler login`, `npx.cmd wrangler d1 create mira-phone --no-update-config`, **sau đó** chép `wrangler.toml.example` thành `wrangler.toml`, thay `REPLACE_WITH_YOUR_D1_DATABASE_ID` bằng `database_id` lệnh vừa in ra; tiếp tục `npx.cmd wrangler d1 migrations apply mira-phone --remote`, `npx.cmd wrangler deploy`, `npx.cmd wrangler secret put MIRA_ACCESS_KEY` và nhập một khóa bí mật tự tạo từ 24 ký tự trở lên. Không commit khóa vào GitHub. Trên macOS/Linux, thay `npx.cmd` bằng `npx`.
+
+**Sau khi sửa web:** mở PowerShell trong đúng thư mục `cloud` đã cài (có file `wrangler.toml`), chạy `npx.cmd wrangler deploy` rồi tải lại trang trên điện thoại. Lệnh này cập nhật `public/` và `worker.mjs` lên cùng Worker cũ; không cần chạy lại `setup.py` vì script thiết lập sẽ tạo khóa đăng nhập mới. Nếu PowerShell báo không chạy được `npx.ps1` do Execution Policy, dùng `npx.cmd` như trên, không cần đổi chính sách chạy script.
 
 ## Nhận lịch qua Telegram khi laptop tắt
 
@@ -26,7 +28,7 @@ Chọn **Workers Free** của Cloudflare, không đăng ký gói trả phí ho�
 
 Trong Telegram, gửi tin nhắn bất kỳ để chat với Mira. Các lệnh: `/help`, `/gio`, `/lich`, `/nhac 30p | uống nước`, `/nhac 2h | đứng dậy`, `/nhac 2026-10-01T09:00:00+07:00 | đi họp`, `/xoa <mã 8 ký tự>` từ `/lich`. Giờ tuyệt đối phải có múi giờ như `+07:00` hoặc `Z`; tab Lịch nhắc tự chuyển giờ điện thoại sang UTC. Lịch hiển thị cho bot theo `MIRA_TIMEZONE` trong `wrangler.toml` (mặc định `Asia/Ho_Chi_Minh`); sửa biến rồi deploy lại nếu cần. Nếu chưa cài bot, lịch vẫn lưu được nhưng **không tự hiện thông báo khi đóng trang**.
 
-Telegram cần [webhook HTTPS và secret_token](https://core.telegram.org/bots/api#setwebhook); lúc `setWebhook` hoạt động, long polling `getUpdates` của cùng bot sẽ ngừng. Để ngắt bot, dùng `npx wrangler secret delete TELEGRAM_BOT_TOKEN` và thu hồi token cũ tại BotFather. Đừng gửi token, khóa Mira hay dữ liệu nhạy cảm lên chat công khai.
+Telegram cần [webhook HTTPS và secret_token](https://core.telegram.org/bots/api#setwebhook); lúc `setWebhook` hoạt động, long polling `getUpdates` của cùng bot sẽ ngừng. Để ngắt bot trên Windows, dùng `npx.cmd wrangler secret delete TELEGRAM_BOT_TOKEN` và thu hồi token cũ tại BotFather. Đừng gửi token, khóa Mira hay dữ liệu nhạy cảm lên chat công khai.
 
 ## Khi laptop đang bật
 
