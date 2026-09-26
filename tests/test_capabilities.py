@@ -182,7 +182,9 @@ class CaptureTests(unittest.TestCase):
                 ctypes.cast(output, ctypes.POINTER(SYSTEM_POWER_STATUS)).contents.BatteryFlag = 255
                 return True
             api.kernel32.GetSystemPowerStatus = unknown
-            self.assertIn("chưa xác định", battery_status())
+            unknown_status = battery_status().casefold()
+            self.assertRegex(unknown_status, r"chưa xác định|không xác định")
+            self.assertNotIn("pin laptop: 64%", unknown_status)
 
     def test_screenshot_bytes_are_read_then_temporary_file_is_removed(self):
         paths = []
