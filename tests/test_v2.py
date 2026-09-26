@@ -69,6 +69,7 @@ class VisibleComposerTests(unittest.TestCase):
                                         f"desk_mapped={app.desk.winfo_ismapped()} "
                                         f"rail_mapped={app.side_panel.winfo_ismapped()}")
                         self.assertTrue(app.send_button.winfo_ismapped())
+                        self.assertTrue(app.screen_button.winfo_ismapped())
                         self.assertTrue(app.avatar.winfo_ismapped())
                         self.assertTrue(app.phone_button.winfo_ismapped())
                         self.assertTrue(app.feed_canvas.winfo_ismapped())

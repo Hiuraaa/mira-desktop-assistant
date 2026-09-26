@@ -53,7 +53,7 @@ class PhoneServer:
 
     def __init__(self, path: Path, agent, reminders, memories, preferences,
                  *, port: int = 8765, model: str, name: str, cloud_consent: bool,
-                 fast: bool, persona: str, persona_note: str):
+                 fast: bool, persona: str, persona_note: str, web_enabled: bool = False):
         self.agent = agent
         self.reminders = reminders
         self.memories = memories
@@ -66,7 +66,8 @@ class PhoneServer:
         self._pair_code = ""
         self._pair_expires = 0.0
         self.config = {"model": model, "name": name, "cloud_consent": cloud_consent,
-                       "fast": fast, "persona": persona, "persona_note": persona_note}
+                       "fast": fast, "persona": persona, "persona_note": persona_note,
+                       "web_enabled": web_enabled}
         self.new_pairing_code()
         owner = self
 
@@ -312,7 +313,8 @@ class PhoneServer:
             answer = self.agent.respond(request, self.chat.list(), config["model"],
                                         config["name"], memories, None, lambda *_: False,
                                         fast=config["fast"], persona=config["persona"],
-                                        persona_note=config["persona_note"])
+                                        persona_note=config["persona_note"],
+                                        web_enabled=config["web_enabled"])
             self.chat.append_exchange(request, answer)
             return answer
         finally:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import threading
 import queue
+import base64
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -15,6 +17,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .agent import Agent, is_cloud_model
+from .desktop import DesktopController, capture_primary_screen
 from .mobile_server import PhoneServer
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
@@ -91,6 +94,10 @@ class MiraApp(tk.Tk):
         self.voice_auto_var = tk.BooleanVar(value=settings.get("voice_auto", False))
         self.playful_var = tk.BooleanVar(value=settings.get("persona_mode", "playful") == "playful")
         self.persona_note = str(settings.get("persona_note") or "")[:400]
+        self.web_var = tk.BooleanVar(value=settings.get("web_enabled") is True)
+        self.desktop = DesktopController()
+        self.desktop_enabled = False
+        self.desktop_hid_for_action = False
         self.stream_chat_id: str | None = None
         self.stream_text = ""
         self.avatar_state = "idle"
@@ -193,6 +200,9 @@ class MiraApp(tk.Tk):
             ("↗  Mô hình mạnh & tốc độ", self._model_lab_dialog),
             ("☁  AI cloud cho máy yếu", self._cloud_dialog),
             ("↻  Kiểm tra kết nối AI", self._check_ollama),
+            ("🌐  Bật / tắt tra cứu web", lambda: self._toggle_web(not self.web_var.get())),
+            ("🖱  Bật / tắt điều khiển máy", self._toggle_desktop),
+            ("▣  Chụp màn hình để hỏi Mira", self._attach_screen),
             ("?  Hướng dẫn cài AI", self._setup_guide),
             ("↑  Xuất cuộc trò chuyện", self._export_chat),
         )
@@ -301,12 +311,15 @@ class MiraApp(tk.Tk):
         compose_tools.grid(row=2, column=0, sticky="ew", pady=(5, 0))
         self._button(compose_tools, "＋ Ảnh", self._attach_image, compact=True,
                      background=PANEL).pack(side="left")
+        self.screen_button = self._button(compose_tools, "▣ Màn hình", self._attach_screen,
+                                          compact=True, background=PANEL)
+        self.screen_button.pack(side="left")
         self._button(compose_tools, "＋ File", self._attach_file, compact=True,
                      background=PANEL).pack(side="left")
         self._button(compose_tools, "▶ Kiểm thử", self._run_tests, compact=True,
                      background=PANEL).pack(side="left")
         tk.Label(compose_tools, textvariable=self.attachment_var, bg=PANEL, fg=MUTED,
-                 font=("Segoe UI", 9), anchor="w", width=18).pack(side="left", padx=5)
+                 font=("Segoe UI", 9), anchor="w", width=12).pack(side="left", padx=5)
         self._button(compose_tools, "Bỏ ảnh", self._clear_image, compact=True,
                      background=PANEL).pack(side="left")
         self.send_button = self._button(compose_tools, "Gửi  ↗", self._send,
@@ -368,6 +381,15 @@ class MiraApp(tk.Tk):
                      compact=True, background=SURFACE).pack(fill="x", pady=3)
         self._button(work_card, "▶ Chạy kiểm thử", self._run_tests,
                      compact=True, background=SURFACE).pack(fill="x", pady=3)
+        tk.Checkbutton(work_card, text="🌐 Cho Mira tra cứu web", variable=self.web_var,
+                       command=self._toggle_web, bg=PANEL, fg=TEXT, selectcolor=SIDE,
+                       activebackground=PANEL, activeforeground=TEXT,
+                       font=("Segoe UI", 10), cursor="hand2").pack(anchor="w", pady=(6, 0))
+        self.desktop_button = self._button(work_card, "🖱 Bật điều khiển máy", self._toggle_desktop,
+                                           compact=True, background=SURFACE)
+        self.desktop_button.pack(fill="x", pady=(6, 3))
+        if sys.platform != "win32":
+            self.desktop_button.configure(state="disabled", text="Điều khiển: chỉ Windows")
         tk.Checkbutton(work_card, text="✦ Mira hoạt bát", variable=self.playful_var,
                        command=self._toggle_persona, bg=PANEL, fg=ACCENT, selectcolor=SIDE,
                        activebackground=PANEL, activeforeground=TEXT,
@@ -399,6 +421,7 @@ class MiraApp(tk.Tk):
             "voice_auto": self.voice_auto_var.get(),
             "persona_mode": "playful" if self.playful_var.get() else "standard",
             "persona_note": self.persona_note,
+            "web_enabled": self.web_var.get(),
             "folder": str(self.workspace.root) if self.workspace else "",
             "active_chat_id": self.active_chat_id,
             "current_chat": self.active_chat_id,
@@ -407,12 +430,14 @@ class MiraApp(tk.Tk):
             self.phone_server.update_config(
                 model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
                 cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                web_enabled=self.web_var.get(),
                 persona="playful" if self.playful_var.get() else "standard",
                 persona_note=self.persona_note)
         if self.telegram_bot:
             self.telegram_bot.update_config(
                 model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
                 cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                web_enabled=self.web_var.get(),
                 persona="playful" if self.playful_var.get() else "standard",
                 persona_note=self.persona_note)
 
@@ -423,6 +448,46 @@ class MiraApp(tk.Tk):
                                 else "Đã chuyển sang Mira thường.")
         except OSError as exc:
             messagebox.showerror("Không lưu được tính cách", str(exc))
+
+    def _toggle_web(self, enabled=None):
+        if enabled is not None:
+            self.web_var.set(enabled)
+        if self.web_var.get() and not messagebox.askyesno(
+                "Cho Mira tra cứu web?",
+                "Mira sẽ gửi câu tìm kiếm đến DuckDuckGo. Khi dịch vụ này không trả kết quả, "
+                "Mira chỉ thử Wikipedia và sẽ nói rõ giới hạn. Tìm kiếm không dùng API trả phí.\n\n"
+                "Bật tra cứu web cho desktop, Telegram và chat điện thoại?", parent=self):
+            self.web_var.set(False)
+            return
+        try:
+            self._save_settings()
+            self.status_var.set("Đã bật tra cứu web." if self.web_var.get()
+                                else "Đã tắt tra cứu web.")
+        except OSError as exc:
+            self.web_var.set(False)
+            messagebox.showerror("Không lưu được quyền web", str(exc), parent=self)
+
+    def _toggle_desktop(self):
+        if sys.platform != "win32":
+            messagebox.showinfo("Chỉ hỗ trợ Windows", "Quyền điều khiển này chỉ chạy trong Mira trên Windows.")
+            return
+        if not self.desktop_enabled:
+            if not messagebox.askyesno(
+                    "Cho Mira điều khiển máy trong phiên này?",
+                    "Mira có thể mở ứng dụng Windows, nhấp chuột, gõ chữ và nhấn phím tắt "
+                    "trên màn hình chính. Mỗi thao tác đều hiện nội dung cụ thể để bạn duyệt.\n\n"
+                    "Quyền này chỉ có hiệu lực trong cửa sổ Mira hiện tại; Telegram và điện thoại "
+                    "không thể điều khiển máy qua AI. Hãy xem nội dung trước khi duyệt.",
+                    parent=self):
+                return
+            self.desktop_enabled = True
+            self.desktop_button.configure(text="🖱 Tắt điều khiển máy")
+            self.status_var.set("Điều khiển máy đang bật • từng thao tác vẫn cần bạn duyệt.")
+        else:
+            self.desktop_enabled = False
+            self.desktop.target_window = 0
+            self.desktop_button.configure(text="🖱 Bật điều khiển máy")
+            self.status_var.set("Đã tắt quyền điều khiển máy.")
 
     def _close(self):
         self.closed = True
@@ -864,6 +929,7 @@ class MiraApp(tk.Tk):
                         self.path, self.agent, self.reminders, self.memories, self.preferences,
                         model=self.model_var.get().strip(), name=self.name_var.get().strip() or "Mira",
                         cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                        web_enabled=self.web_var.get(),
                         persona="playful" if self.playful_var.get() else "standard",
                         persona_note=self.persona_note)
                     server.start()
@@ -913,6 +979,7 @@ class MiraApp(tk.Tk):
                                 model=self.model_var.get().strip(),
                                 name=self.name_var.get().strip() or "Mira",
                                 cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
+                                web_enabled=self.web_var.get(),
                                 persona="playful" if self.playful_var.get() else "standard",
                                 persona_note=self.persona_note)
         if self.telegram_bot:
@@ -1646,6 +1713,65 @@ class MiraApp(tk.Tk):
             except (OSError, ValueError) as exc:
                 messagebox.showerror("Không đính kèm được ảnh", str(exc))
 
+    def _attach_screen(self):
+        if self.busy:
+            return
+        if sys.platform != "win32":
+            messagebox.showinfo("Chỉ hỗ trợ Windows", "Nút chụp màn hình hiện chỉ chạy trên Windows.",
+                                parent=self)
+            return
+        error = None
+        try:
+            self.iconify()  # Reveal the app behind Mira in the screenshot.
+            self.update_idletasks()
+            time.sleep(0.3)
+            data = capture_primary_screen()
+        except (OSError, RuntimeError) as exc:
+            error = str(exc)
+        finally:
+            if not self.closed:
+                self.deiconify()
+                self.lift()
+        if error:
+            messagebox.showerror("Không chụp được màn hình", error, parent=self)
+            return
+        width, height = struct.unpack(">II", data[16:24])
+        try:
+            photo = tk.PhotoImage(data=base64.b64encode(data).decode("ascii"), format="png")
+        except tk.TclError as exc:
+            messagebox.showerror("Không xem được ảnh", str(exc), parent=self)
+            return
+        factor = max(1, (width + 739) // 740, (height + 399) // 400)
+        preview = photo.subsample(factor, factor)
+        dialog = tk.Toplevel(self)
+        dialog.title("Xem trước màn hình gửi cho Mira")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        dialog.grab_set()
+        tk.Label(dialog, text="Ảnh màn hình chính vừa chụp • " + f"{width} × {height}",
+                 bg=BG, fg=TEXT, font=("Segoe UI", 12, "bold")).pack(padx=18, pady=(16, 8))
+        label = tk.Label(dialog, image=preview, bg=BG)
+        label.image = preview
+        label.pack(padx=16)
+        tk.Label(dialog, text="Chỉ gửi nếu ảnh không chứa thông tin bạn muốn giữ riêng. "
+                 "Nếu dùng mô hình cloud, ảnh sẽ được gửi đến Ollama Cloud khi bạn bấm Gửi.",
+                 bg=BG, fg=MUTED, wraplength=720, justify="left").pack(padx=18, pady=(9, 12))
+
+        def finish(attach=False):
+            if attach:
+                self.attachment_data = data
+                self.attachment_name = f"Màn hình chính {width}x{height}.png"
+                self.desktop.screen_size = (width, height)
+                self.attachment_var.set("Ảnh màn hình đã chọn")
+                self.input.focus_set()
+            dialog.destroy()
+
+        row = tk.Frame(dialog, bg=BG)
+        row.pack(pady=(0, 16))
+        self._button(row, "Hủy", finish).pack(side="left", padx=6)
+        self._button(row, "Đính kèm ảnh này", lambda: finish(True), primary=True).pack(side="left")
+        dialog.protocol("WM_DELETE_WINDOW", finish)
+
     def _clear_image(self):
         self.attachment_data = None
         self.attachment_name = None
@@ -1711,6 +1837,39 @@ class MiraApp(tk.Tk):
         self.pending_approval = None
         return decision[0] and not self.closed
 
+    def _approve_desktop_action(self, description: str) -> bool:
+        done = threading.Event()
+        self.pending_approval = done
+        decision = [False]
+
+        def show():
+            if self.closed or not self.desktop_enabled:
+                done.set()
+                return
+            self.deiconify()
+            self.lift()
+            decision[0] = messagebox.askyesno(
+                "Duyệt thao tác trên máy",
+                "Mira đề nghị thao tác này:\n\n" + description +
+                "\n\nChỉ bấm Có nếu đúng ứng dụng và đúng nội dung bạn muốn. "
+                "Bạn có thể chọn Không để dừng bước này.",
+                parent=self,
+            )
+            if decision[0] and not self.closed and self.desktop_enabled:
+                self.iconify()
+                self.desktop_hid_for_action = True
+                self.after(300, done.set)
+            else:
+                done.set()
+
+        try:
+            self.after(0, show)
+        except RuntimeError:
+            return False
+        done.wait()
+        self.pending_approval = None
+        return decision[0] and not self.closed and self.desktop_enabled
+
     def _send(self, event=None):
         if not self.busy:
             self._submit(self.input.get("1.0", "end").strip())
@@ -1772,6 +1931,8 @@ class MiraApp(tk.Tk):
         fast = self.fast_var.get()
         persona = "playful" if self.playful_var.get() else "standard"
         persona_note = self.persona_note
+        web_enabled = self.web_var.get()
+        desktop = self.desktop if self.desktop_enabled else None
         self.stream_chat_id = chat_id
         self.stream_text = ""
         chunks = queue.SimpleQueue()
@@ -1811,12 +1972,18 @@ class MiraApp(tk.Tk):
                 answer = self.agent.respond(text, history, model, name, memories, workspace,
                                             self._approve_edit, report, image=image,
                                             on_token=chunks.put, fast=fast, persona=persona,
-                                            persona_note=persona_note, think=think)
+                                            persona_note=persona_note, think=think,
+                                            web_enabled=web_enabled, desktop=desktop,
+                                            approve_action=self._approve_desktop_action if desktop else None)
                 error = None
             except Exception as exc:
                 answer, error = "", str(exc)
 
             def complete():
+                if self.desktop_hid_for_action and not self.closed:
+                    self.deiconify()
+                    self.lift()
+                    self.desktop_hid_for_action = False
                 drain()
                 self._remove_pending()
                 self.stream_chat_id = None
