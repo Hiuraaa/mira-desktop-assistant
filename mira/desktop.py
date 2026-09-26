@@ -58,6 +58,7 @@ _KEYS = {
     "delete": 0x2E, "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27,
     "home": 0x24, "end": 0x23, "space": 0x20, "f4": 0x73,
     **{letter: ord(letter.upper()) for letter in "abcdefghijklmnopqrstuvwxyz"},
+    **{digit: ord(digit) for digit in "0123456789"},
 }
 _APPS = {"notepad": "notepad.exe", "calculator": "calc.exe", "explorer": "explorer.exe"}
 
@@ -88,6 +89,17 @@ class DesktopController:
     def __init__(self):
         self.target_window = 0
         self.screen_size: tuple[int, int] | None = None
+
+    def select_foreground(self) -> str:
+        """Capture the window the user has focused after a visible countdown."""
+        user32 = self._user32()
+        previous = self.target_window
+        self.target_window = user32.GetForegroundWindow()
+        try:
+            return self._target_title()
+        except (ValueError, RuntimeError):
+            self.target_window = previous
+            raise
 
     @staticmethod
     def _user32():
@@ -130,6 +142,14 @@ class DesktopController:
                 raise ValueError("Chỉ hỗ trợ tổ hợp phím thông dụng, ví dụ Ctrl+S.")
             title = self._target_title()
             return f"Nhấn {value} trong cửa sổ {title}."
+        if name == "hold_key":
+            from .lessons import GAME_KEYS
+            key, duration = args.get("key"), args.get("duration")
+            if (not isinstance(key, str) or key.casefold() not in GAME_KEYS
+                    or isinstance(duration, bool) or not isinstance(duration, (int, float))
+                    or not 0.05 <= duration <= 2):
+                raise ValueError("Giữ phím game cần phím được phép và thời gian 0,05–2 giây.")
+            return f"Giữ {key} {duration} giây trong cửa sổ {self._target_title()}."
         if name == "open_app":
             app = args.get("app")
             if app not in _APPS:
@@ -167,7 +187,7 @@ class DesktopController:
         if user32.GetForegroundWindow() != self.target_window:
             raise RuntimeError("Cửa sổ đích đã thay đổi; không gõ để tránh nhầm chỗ.")
 
-    def execute(self, name: str, args: dict) -> str:
+    def execute(self, name: str, args: dict, *, stopped=None) -> str:
         self.describe(name, args)  # Revalidate before touching the desktop.
         if name == "open_app":
             subprocess.Popen([_APPS[args["app"]]], shell=False)
@@ -200,4 +220,18 @@ class DesktopController:
                           for code in reversed(codes))
             self._send(inputs)
             return "Đã gửi phím tắt vào cửa sổ được duyệt; hãy kiểm tra trên màn hình."
+        if name == "hold_key":
+            code = _KEYS[args["key"].casefold()]
+            self._send([_INPUT(1, _INPUT_DATA(ki=_KEYBDINPUT(code, 0, 0, 0, 0)))])
+            try:
+                deadline = time.monotonic() + args["duration"]
+                while time.monotonic() < deadline:
+                    if stopped is not None and stopped.is_set():
+                        break
+                    if self._user32().GetForegroundWindow() != self.target_window:
+                        raise RuntimeError("Đã đổi cửa sổ; Mira thả phím ngay.")
+                    time.sleep(min(0.04, max(0, deadline - time.monotonic())))
+            finally:
+                self._send([_INPUT(1, _INPUT_DATA(ki=_KEYBDINPUT(code, 0, 0x0002, 0, 0)))])
+            return "Đã thả phím game."
         raise ValueError("Hành động desktop không được hỗ trợ.")

@@ -17,7 +17,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .agent import Agent, is_cloud_model
+from .avatar import AnimeAvatar, STYLES
 from .desktop import DesktopController, capture_primary_screen
+from .device import device_status
+from .lessons import LessonStore
 from .mobile_server import PhoneServer
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
@@ -63,6 +66,7 @@ class MiraApp(tk.Tk):
         if not isinstance(settings, dict):
             raise ValueError("Cài đặt Mira không đúng định dạng.")
         self.memories = MemoryStore(self.path / "memories.json")
+        self.lessons = LessonStore(self.path / "game_lessons.json")
         self.preferences = PreferenceStore(self.path / "preferences.json")
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
         self.reminders = ReminderStore(self.path / "reminders.json")
@@ -97,11 +101,19 @@ class MiraApp(tk.Tk):
         self.web_var = tk.BooleanVar(value=settings.get("web_enabled") is True)
         self.desktop = DesktopController()
         self.desktop_enabled = False
+        self.device_enabled = False
+        self.phone_screen_enabled = False
+        self.phone_files_enabled = False
         self.desktop_hid_for_action = False
         self.stream_chat_id: str | None = None
         self.stream_text = ""
         self.avatar_state = "idle"
         self.avatar_tick = 0
+        self.avatar_style = settings.get("avatar_style", "violet")
+        if self.avatar_style not in STYLES:
+            self.avatar_style = "violet"
+        self.custom_avatar_path = self.path / "mira_character.png"
+        self.avatar_custom = settings.get("avatar_custom") is True and self.custom_avatar_path.is_file()
         self.folder_var = tk.StringVar(value="Chưa chọn thư mục • Mira chỉ trò chuyện")
         self.health_var = tk.StringVar(value="Đang kiểm tra Ollama…")
         self.status_var = tk.StringVar(value="Sẵn sàng • Enter để gửi, Shift+Enter để xuống dòng")
@@ -157,7 +169,7 @@ class MiraApp(tk.Tk):
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
-        sidebar.grid_rowconfigure(4, weight=1)
+        sidebar.grid_rowconfigure(5, weight=1)
         brand = tk.Frame(sidebar, bg=SIDE)
         brand.grid(row=0, column=0, sticky="ew", pady=(0, 4))
         tk.Label(brand, text="✦", bg=SIDE, fg=ACCENT,
@@ -169,11 +181,14 @@ class MiraApp(tk.Tk):
                      row=1, column=0, sticky="ew", pady=(0, 23))
         self._button(sidebar, "＋  Cuộc trò chuyện mới", self._new_chat, primary=True).grid(
             row=2, column=0, sticky="ew", pady=(0, 11))
-        self.phone_button = self._button(sidebar, "◈  Điện thoại & lịch nhắc",
+        self._button(sidebar, "☁  Điện thoại khi máy tắt",
+                     self._cloud_phone_dialog, primary=True).grid(row=3, column=0,
+                                                                  sticky="ew", pady=(0, 9))
+        self.phone_button = self._button(sidebar, "◈  Kết nối khi máy bật",
                                          self._mobile_dialog, background=SURFACE)
-        self.phone_button.grid(row=3, column=0, sticky="ew", pady=(0, 22))
+        self.phone_button.grid(row=4, column=0, sticky="ew", pady=(0, 16))
         archive = tk.Frame(sidebar, bg=SIDE)
-        archive.grid(row=4, column=0, sticky="nsew")
+        archive.grid(row=5, column=0, sticky="nsew")
         archive.grid_columnconfigure(0, weight=1)
         archive.grid_rowconfigure(1, weight=1)
         tk.Label(archive, text="GẦN ĐÂY", bg=SIDE, fg=MUTED,
@@ -184,11 +199,11 @@ class MiraApp(tk.Tk):
         self.chat_list.grid(row=1, column=0, sticky="nsew")
         self.chat_list.bind("<<ListboxSelect>>", self._select_chat)
         actions = tk.Frame(sidebar, bg=SIDE)
-        actions.grid(row=5, column=0, sticky="ew", pady=(8, 8))
+        actions.grid(row=6, column=0, sticky="ew", pady=(8, 8))
         self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
         self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
         tools = tk.Frame(sidebar, bg=SIDE)
-        tools.grid(row=6, column=0, sticky="ew", pady=(7, 0))
+        tools.grid(row=7, column=0, sticky="ew", pady=(7, 0))
         tools.grid_columnconfigure(0, weight=1)
         tk.Label(tools, text="CÔNG CỤ", bg=SIDE, fg=MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
@@ -202,7 +217,10 @@ class MiraApp(tk.Tk):
             ("↻  Kiểm tra kết nối AI", self._check_ollama),
             ("🌐  Bật / tắt tra cứu web", lambda: self._toggle_web(not self.web_var.get())),
             ("🖱  Bật / tắt điều khiển máy", self._toggle_desktop),
+            ("◉  Bật / tắt xem trạng thái PC", self._toggle_device),
             ("▣  Chụp màn hình để hỏi Mira", self._attach_screen),
+            ("✦  Nhân vật Mira", self._avatar_dialog),
+            ("☁  Mira trên điện thoại khi máy tắt", self._cloud_phone_dialog),
             ("?  Hướng dẫn cài AI", self._setup_guide),
             ("↑  Xuất cuộc trò chuyện", self._export_chat),
         )
@@ -243,13 +261,12 @@ class MiraApp(tk.Tk):
 
         head = tk.Frame(desk, bg=BG)
         head.grid(row=0, column=0, sticky="ew", pady=(4, 16))
-        self.avatar = tk.Canvas(head, width=50, height=52, bg=BG, highlightthickness=0)
+        self.avatar = AnimeAvatar(head, size=74, bg=BG, style=self.avatar_style,
+                                  image_path=self.custom_avatar_path if self.avatar_custom else None,
+                                  command=self._avatar_dialog)
         self.avatar.pack(side="right", padx=(12, 0))
-        self.avatar_ring = self.avatar.create_oval(2, 2, 48, 48, fill=SURFACE, outline=ACCENT, width=2)
-        self.avatar.create_oval(10, 13, 18, 21, fill=ACCENT, outline="")
-        self.avatar.create_oval(31, 13, 39, 21, fill=ACCENT, outline="")
-        self.avatar_mouth = self.avatar.create_arc(17, 22, 34, 36, start=180, extent=180,
-                                                   style="arc", outline=ACCENT, width=2)
+        self._button(head, "☁ Điện thoại", self._cloud_phone_dialog, compact=True,
+                     primary=True).pack(side="right", padx=(6, 0))
         self._button(head, "Lịch nhắc", self._reminders_dialog, compact=True,
                      background=SURFACE).pack(side="right", padx=(10, 0))
         compact_tools = tk.Frame(head, bg=BG)
@@ -367,6 +384,7 @@ class MiraApp(tk.Tk):
                  font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x", pady=(0, 10))
         for label, action in (("⌚  Đặt lịch nhắc", self._reminders_dialog),
                               ("◈  Chat trên điện thoại", self._mobile_dialog),
+                              ("✦  Nhân vật Mira", self._avatar_dialog),
                               ("✦  Dạy Mira nhớ", self._show_memories),
                               ("▤  Chọn thư mục", self._choose_folder)):
             self._button(actions_card, label, action, compact=True,
@@ -390,6 +408,11 @@ class MiraApp(tk.Tk):
         self.desktop_button.pack(fill="x", pady=(6, 3))
         if sys.platform != "win32":
             self.desktop_button.configure(state="disabled", text="Điều khiển: chỉ Windows")
+        self.device_button = self._button(work_card, "◉ Cho Mira xem trạng thái PC", self._toggle_device,
+                                          compact=True, background=SURFACE)
+        self.device_button.pack(fill="x", pady=(4, 3))
+        if sys.platform != "win32":
+            self.device_button.configure(state="disabled", text="Trạng thái PC: chỉ Windows")
         tk.Checkbutton(work_card, text="✦ Mira hoạt bát", variable=self.playful_var,
                        command=self._toggle_persona, bg=PANEL, fg=ACCENT, selectcolor=SIDE,
                        activebackground=PANEL, activeforeground=TEXT,
@@ -421,6 +444,8 @@ class MiraApp(tk.Tk):
             "voice_auto": self.voice_auto_var.get(),
             "persona_mode": "playful" if self.playful_var.get() else "standard",
             "persona_note": self.persona_note,
+            "avatar_style": self.avatar_style,
+            "avatar_custom": self.avatar_custom,
             "web_enabled": self.web_var.get(),
             "folder": str(self.workspace.root) if self.workspace else "",
             "active_chat_id": self.active_chat_id,
@@ -432,7 +457,11 @@ class MiraApp(tk.Tk):
                 cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
                 web_enabled=self.web_var.get(),
                 persona="playful" if self.playful_var.get() else "standard",
-                persona_note=self.persona_note)
+                persona_note=self.persona_note,
+                avatar_style=self.avatar_style, avatar_custom=self.avatar_custom,
+                status_reader=self._read_status_if_enabled if self.device_enabled else None,
+                screen_reader=capture_primary_screen if self.phone_screen_enabled else None,
+                workspace=self.workspace if self.phone_files_enabled else None)
         if self.telegram_bot:
             self.telegram_bot.update_config(
                 model=selected_model, name=self.name_var.get().strip()[:40] or "Mira",
@@ -489,8 +518,36 @@ class MiraApp(tk.Tk):
             self.desktop_button.configure(text="🖱 Bật điều khiển máy")
             self.status_var.set("Đã tắt quyền điều khiển máy.")
 
+    def _read_status_if_enabled(self):
+        if not self.device_enabled:
+            raise RuntimeError("Quyền đọc trạng thái PC đã bị tắt trên máy tính.")
+        return device_status()
+
+    def _toggle_device(self, *, parent=None):
+        if sys.platform != "win32":
+            return
+        if not self.device_enabled and not messagebox.askyesno(
+                "Cho Mira đọc trạng thái PC?",
+                "Mira có thể kiểm tra pin, máy có đang cắm nguồn, RAM và dung lượng trống "
+                "của ổ hệ thống khi bạn hỏi từ ứng dụng hoặc điện thoại đã ghép nối. "
+                "Nếu dùng AI cloud, các thông tin đã đọc có thể đi cùng yêu cầu tới Ollama. "
+                "Quyền này hết khi đóng Mira và bạn có thể tắt bất cứ lúc nào.",
+                parent=parent or self):
+            return
+        self.device_enabled = not self.device_enabled
+        self.device_button.configure(text=("◉ Tắt xem trạng thái PC" if self.device_enabled else
+                                           "◉ Cho Mira xem trạng thái PC"))
+        self.status_var.set("Đã bật quyền đọc trạng thái PC." if self.device_enabled else
+                            "Đã tắt quyền đọc trạng thái PC.")
+        if self.phone_server:
+            self.phone_server.update_config(status_reader=self._read_status_if_enabled if self.device_enabled else None)
+
     def _close(self):
         self.closed = True
+        self.lessons.stop_event.set()
+        self.device_enabled = False
+        self.phone_screen_enabled = False
+        self.phone_files_enabled = False
         if self.phone_server:
             self.phone_server.stop()
             self.phone_server = None
@@ -529,14 +586,76 @@ class MiraApp(tk.Tk):
         if self.closed:
             return
         self.avatar_tick += 1
-        active = self.avatar_state != "idle"
-        color = ACCENT if self.avatar_state != "thinking" or self.avatar_tick % 2 else "#a9caff"
-        self.avatar.itemconfigure(self.avatar_ring, outline=color, width=3 if active else 2)
-        if self.avatar_state == "speaking" and self.avatar_tick % 2:
-            self.avatar.coords(self.avatar_mouth, 20, 24, 30, 37)
-        else:
-            self.avatar.coords(self.avatar_mouth, 17, 22, 34, 36)
+        self.avatar.set_state(self.avatar_state, self.avatar_tick)
         self.after(280, self._animate_avatar)
+
+    def _avatar_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Nhân vật anime của Mira")
+        dialog.geometry("530x530")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Nhân vật Mira", font=("Segoe UI", 18, "bold"),
+                 bg=BG, fg=TEXT).pack(pady=(18, 4))
+        tk.Label(dialog, text="Nhấp vào ảnh nhỏ ở góc chat để mở lại. Mira chớp mắt, suy nghĩ "
+                 "và cử động miệng khi trả lời hoặc đọc thành tiếng.", bg=BG, fg=MUTED,
+                 wraplength=475, justify="center").pack(padx=18, pady=(0, 8))
+        preview = AnimeAvatar(dialog, size=250, bg=BG, style=self.avatar_style,
+                              image_path=self.custom_avatar_path if self.avatar_custom else None)
+        preview.pack()
+
+        def animate_preview():
+            if dialog.winfo_exists():
+                preview.set_state(self.avatar_state, self.avatar_tick)
+                dialog.after(300, animate_preview)
+
+        dialog.after(300, animate_preview)
+        row = tk.Frame(dialog, bg=BG)
+        row.pack(pady=(7, 7))
+        tk.Label(row, text="Màu tóc:", bg=BG, fg=TEXT).pack(side="left", padx=(0, 9))
+        names = [item[0] for item in STYLES.values()]
+        choices = list(STYLES)
+        style = ttk.Combobox(row, state="readonly", values=names, width=19)
+        style.current(choices.index(self.avatar_style))
+        style.pack(side="left")
+
+        def set_style(_=None):
+            self.avatar_style = choices[style.current()]
+            self.avatar_custom = False
+            self.avatar.configure_avatar(style=self.avatar_style)
+            preview.configure_avatar(style=self.avatar_style)
+            self._save_settings()
+
+        style.bind("<<ComboboxSelected>>", set_style)
+
+        def import_png():
+            filename = filedialog.askopenfilename(title="Chọn ảnh PNG nhân vật anime",
+                                                  filetypes=[("Ảnh PNG", "*.png")], parent=dialog)
+            if not filename:
+                return
+            try:
+                source = Path(filename)
+                blob = source.read_bytes()
+                if len(blob) > 5 * 1024 * 1024 or not blob.startswith(b"\x89PNG\r\n\x1a\n"):
+                    raise ValueError("Chỉ nhận PNG dưới 5 MiB.")
+                width, height = struct.unpack(">II", blob[16:24])
+                if width < 64 or height < 64 or width * height > 4_000_000:
+                    raise ValueError("Ảnh cần rộng và cao ít nhất 64 px, tối đa 4 triệu điểm ảnh.")
+                # Test with Tk before changing the saved avatar.
+                tk.PhotoImage(data=base64.b64encode(blob).decode("ascii"), format="png", master=dialog)
+                self.custom_avatar_path.write_bytes(blob)
+                self.avatar_custom = True
+                self.avatar.configure_avatar(image_path=self.custom_avatar_path)
+                preview.configure_avatar(image_path=self.custom_avatar_path)
+                self._save_settings()
+            except (OSError, ValueError, tk.TclError, struct.error) as exc:
+                messagebox.showerror("Ảnh nhân vật không hợp lệ", str(exc), parent=dialog)
+
+        self._button(dialog, "＋ Dùng ảnh PNG nhân vật của bạn", import_png,
+                     primary=True).pack(pady=(3, 5))
+        tk.Label(dialog, text="Ảnh PNG tĩnh dành cho giao diện Mira trên máy tính. "
+                 "Trang điện thoại cloud có biểu tượng 2D nhẹ, chạy cả khi laptop tắt.", bg=BG, fg=MUTED,
+                 wraplength=475).pack(padx=18)
 
     def _refresh_chat_list(self):
         self.chat_list.delete(0, "end")
@@ -760,7 +879,10 @@ class MiraApp(tk.Tk):
         folder = filedialog.askdirectory(title="Chọn thư mục Mira được phép đọc và đề xuất sửa")
         if folder:
             try:
-                self.workspace = Workspace(Path(folder), self.path / "backups")
+                selected = Workspace(Path(folder), self.path / "backups")
+                if self.workspace is None or self.workspace.root != selected.root:
+                    self.phone_files_enabled = False
+                self.workspace = selected
                 self.folder_var.set(str(self.workspace.root))
                 self._save_settings()
             except (WorkspaceError, OSError) as exc:
@@ -895,13 +1017,53 @@ class MiraApp(tk.Tk):
                      self._button)).pack(side="right")
         reload()
 
+    def _cloud_phone_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Mira trên điện thoại khi laptop tắt")
+        dialog.geometry("640x510")
+        dialog.configure(bg=BG)
+        dialog.transient(self)
+        tk.Label(dialog, text="Mira đi cùng bạn", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=22, pady=(22, 7))
+        tk.Label(dialog, text="Giao diện điện thoại cloud chạy độc lập: chat, sở thích, "
+                 "lịch nhắc qua Telegram kể cả khi laptop đang tắt.", bg=BG, fg=MUTED,
+                 justify="left", wraplength=590).pack(anchor="w", padx=22)
+        tk.Label(dialog, text="CÀI MỘT LẦN, DÙNG TRÊN ĐIỆN THOẠI", bg=BG, fg=ACCENT,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=22, pady=(22, 8))
+        steps = ("1. Tạo tài khoản Cloudflare Free và cài Node.js trên PC.\n"
+                 "2. Mở thư mục cloud trong bản Mira này, chạy python setup.py.\n"
+                 "3. Lưu khóa truy cập và URL *.workers.dev, mở URL trên điện thoại.\n"
+                 "4. Để Mira báo lịch trong Telegram: tạo bot riêng và chạy python setup_telegram.py.")
+        tk.Label(dialog, text=steps, bg=PANEL, fg=TEXT, padx=17, pady=17,
+                 justify="left", wraplength=570).pack(fill="x", padx=22)
+        tk.Label(dialog, text="Gói miễn phí có hạn mức. Lịch nhắc chỉ gửi thông báo khi đã "
+                 "cấu hình bot Telegram. Chat cloud và chat trong app PC lưu ở hai nơi riêng. "
+                 "Khi máy tắt, không thể xem pin, màn hình hay điều khiển máy.",
+                 bg=BG, fg=MUTED, justify="left", wraplength=580).pack(
+                     anchor="w", padx=22, pady=(14, 8))
+
+        def open_guide():
+            guide = Path(__file__).resolve().parent.parent / "cloud" / "README.md"
+            if not guide.is_file():
+                messagebox.showerror("Chưa có hướng dẫn", "Giải nén lại đầy đủ bản Mira mới, bao gồm thư mục cloud.", parent=dialog)
+                return
+            if sys.platform == "win32":
+                subprocess.Popen(["notepad.exe", str(guide)])
+            else:
+                webbrowser.open(guide.as_uri())
+
+        row = tk.Frame(dialog, bg=BG)
+        row.pack(anchor="w", padx=22, pady=(10, 0))
+        self._button(row, "Đọc hướng dẫn từng bước", open_guide, primary=True).pack(side="left")
+        self._button(row, "Kết nối máy đang bật", self._mobile_dialog).pack(side="left", padx=10)
+
     def _mobile_dialog(self):
         dialog = tk.Toplevel(self)
         dialog.title("Điện thoại & truy cập từ xa")
-        dialog.geometry("700x640")
+        dialog.geometry("700x745")
         dialog.configure(bg=BG)
         dialog.transient(self)
-        tk.Label(dialog, text="Chat với Mira từ điện thoại", bg=BG, fg=TEXT,
+        tk.Label(dialog, text="Kết nối với laptop đang bật", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
         instructions = ("1. Cài Tailscale trên máy tính và điện thoại; đăng nhập cùng tài khoản.\n"
                         "2. Bấm Bật giao diện dưới đây. Trong PowerShell trên máy tính chạy:\n"
@@ -909,7 +1071,8 @@ class MiraApp(tk.Tk):
                         "3. Mở địa chỉ HTTPS do Tailscale in ra trên điện thoại, rồi nhập mã ghép nối.")
         tk.Label(dialog, text=instructions, bg=BG, fg=TEXT, wraplength=625,
                  justify="left").pack(anchor="w", padx=20)
-        tk.Label(dialog, text="Giao diện chỉ lắng nghe 127.0.0.1; dùng Tailscale Serve để "
+        tk.Label(dialog, text="Laptop phải đang bật và ứng dụng Mira đang chạy. Nếu laptop tắt, "
+                 "hãy dùng Mira cloud ở nút Điện thoại khi máy tắt. Giao diện này chỉ lắng nghe 127.0.0.1; dùng Tailscale Serve để "
                  "mở riêng cho các thiết bị trong mạng của bạn. Không dùng Funnel hoặc mở cổng router.",
                  bg=BG, fg=MUTED, wraplength=625, justify="left").pack(
                      anchor="w", padx=20, pady=(9, 12))
@@ -931,7 +1094,11 @@ class MiraApp(tk.Tk):
                         cloud_consent=self.cloud_consent, fast=self.fast_var.get(),
                         web_enabled=self.web_var.get(),
                         persona="playful" if self.playful_var.get() else "standard",
-                        persona_note=self.persona_note)
+                        persona_note=self.persona_note,
+                        avatar_style=self.avatar_style, avatar_custom=self.avatar_custom,
+                        status_reader=self._read_status_if_enabled if self.device_enabled else None,
+                        screen_reader=capture_primary_screen if self.phone_screen_enabled else None,
+                        workspace=self.workspace if self.phone_files_enabled else None)
                     server.start()
                     self.phone_server = server
                 except (OSError, ValueError) as exc:
@@ -944,6 +1111,10 @@ class MiraApp(tk.Tk):
             if self.phone_server:
                 self.phone_server.stop()
                 self.phone_server = None
+            self.phone_screen_enabled = False
+            self.phone_files_enabled = False
+            screen_permission.set(False)
+            files_permission.set(False)
             code.set("—")
             status.set("Đã tắt • các phiên điện thoại vừa bị ngắt")
 
@@ -953,9 +1124,55 @@ class MiraApp(tk.Tk):
         self._button(controls, "Ngắt kết nối", stop).pack(side="left", padx=8)
         self._button(controls, "Lịch nhắc", self._reminders_dialog).pack(side="left")
         self._button(controls, "Nhắc qua Telegram", self._telegram_dialog).pack(side="left", padx=(8, 0))
-        tk.Label(dialog, text="Chat trên điện thoại lưu riêng và không cấp quyền đọc file, "
-                 "sửa code hay chạy lệnh. Nếu chọn mô hình cloud, Mira chỉ gửi sau khi "
-                 "bạn đã đồng ý ở mục Ollama Cloud trên máy tính.",
+        tk.Label(dialog, text="MIRA ĐƯỢC XEM GÌ TRONG MÁY? (CHỈ PHIÊN NÀY)",
+                 bg=BG, fg=ACCENT, font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=20, pady=(4, 0))
+        device_permission = tk.BooleanVar(value=self.device_enabled)
+        screen_permission = tk.BooleanVar(value=self.phone_screen_enabled)
+        files_permission = tk.BooleanVar(value=self.phone_files_enabled)
+
+        def toggle_device():
+            self._toggle_device(parent=dialog)
+            device_permission.set(self.device_enabled)
+
+        def toggle_screen():
+            wanted = screen_permission.get()
+            if wanted and (sys.platform != "win32" or not messagebox.askyesno(
+                    "Cho điện thoại chụp màn hình?",
+                    "Điện thoại đã ghép nối có thể yêu cầu chụp MỘT ảnh màn hình chính. "
+                    "Ảnh sẽ hiện trên điện thoại để bạn xem trước. Nếu bấm Gửi ảnh và dùng "
+                    "mô hình cloud, ảnh có thể được chuyển tới Ollama. Quyền hết khi đóng Mira.",
+                    parent=dialog)):
+                wanted = False
+            self.phone_screen_enabled = wanted
+            screen_permission.set(wanted)
+            if self.phone_server:
+                self.phone_server.update_config(screen_reader=capture_primary_screen if wanted else None)
+
+        def toggle_files():
+            wanted = files_permission.get()
+            if wanted and self.workspace is None:
+                messagebox.showinfo("Chọn thư mục", "Hãy chọn thư mục được phép đọc trên máy tính trước.", parent=dialog)
+                wanted = False
+            if wanted and not messagebox.askyesno(
+                    "Cho điện thoại đọc thư mục?",
+                    f"Mira trên điện thoại được tìm và đọc file văn bản trong:\n{self.workspace.root}\n\n"
+                    "Nội dung file được gửi vào mô hình bạn đang chọn, kể cả Ollama Cloud nếu bạn đã bật. "
+                    "Điện thoại không thể sửa file hay chạy lệnh. Quyền hết khi đóng Mira.", parent=dialog):
+                wanted = False
+            self.phone_files_enabled = wanted
+            files_permission.set(wanted)
+            if self.phone_server:
+                self.phone_server.update_config(workspace=self.workspace if wanted else None)
+
+        for label, variable, command in (
+                ("Cho Mira xem pin, sạc, RAM và dung lượng trống từ điện thoại", device_permission, toggle_device),
+                ("Cho điện thoại chụp màn hình (xem trước mỗi ảnh)", screen_permission, toggle_screen),
+                ("Cho điện thoại đọc thư mục đã chọn (chỉ file văn bản)", files_permission, toggle_files)):
+            tk.Checkbutton(dialog, text=label, variable=variable, command=command,
+                           bg=BG, fg=TEXT, selectcolor=PANEL, activebackground=BG,
+                           activeforeground=TEXT, font=("Segoe UI", 10)).pack(anchor="w", padx=20, pady=2)
+        tk.Label(dialog, text="Chat điện thoại lưu riêng. Không quyền chạy lệnh hoặc điều khiển chuột/bàn phím "
+                 "qua AI. Các quyền trên mặc định tắt và có thể thu hồi ngay tại đây.",
                  bg=BG, fg=MUTED, wraplength=625, justify="left").pack(anchor="w", padx=20)
         links = tk.Frame(dialog, bg=BG)
         links.pack(fill="x", padx=20, pady=(13, 0))
@@ -1617,6 +1834,7 @@ class MiraApp(tk.Tk):
             messagebox.showinfo("Đang trả lời", "Hãy đợi Mira trả lời xong trước khi bỏ thư mục.")
             return
         self.workspace = None
+        self.phone_files_enabled = False
         self.folder_var.set("Chưa chọn thư mục • Mira chỉ trò chuyện")
         self._save_settings()
         self.status_var.set("Đã bỏ quyền truy cập thư mục.")
@@ -1974,7 +2192,9 @@ class MiraApp(tk.Tk):
                                             on_token=chunks.put, fast=fast, persona=persona,
                                             persona_note=persona_note, think=think,
                                             web_enabled=web_enabled, desktop=desktop,
-                                            approve_action=self._approve_desktop_action if desktop else None)
+                                            status_reader=self._read_status_if_enabled if self.device_enabled else None,
+                                            approve_action=self._approve_desktop_action if desktop else None,
+                                            lessons=self.lessons if desktop else None)
                 error = None
             except Exception as exc:
                 answer, error = "", str(exc)

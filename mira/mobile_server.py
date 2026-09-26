@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import secrets
 import threading
@@ -53,21 +54,27 @@ class PhoneServer:
 
     def __init__(self, path: Path, agent, reminders, memories, preferences,
                  *, port: int = 8765, model: str, name: str, cloud_consent: bool,
-                 fast: bool, persona: str, persona_note: str, web_enabled: bool = False):
+                 fast: bool, persona: str, persona_note: str, web_enabled: bool = False,
+                 status_reader=None, screen_reader=None, workspace=None,
+                 avatar_style: str = "violet", avatar_custom: bool = False):
         self.agent = agent
         self.reminders = reminders
         self.memories = memories
         self.preferences = preferences
         self.chat = MobileConversation(path / "phone_conversation.json")
+        self._avatar_path = path / "mira_character.png"
         self._lock = threading.RLock()
         self._request_lock = threading.Lock()
         self._attempts: deque[float] = deque()
         self._sessions: dict[str, tuple[str, str, float]] = {}
+        self._screens: dict[str, tuple[str, float, bytes]] = {}
         self._pair_code = ""
         self._pair_expires = 0.0
         self.config = {"model": model, "name": name, "cloud_consent": cloud_consent,
                        "fast": fast, "persona": persona, "persona_note": persona_note,
-                       "web_enabled": web_enabled}
+                       "web_enabled": web_enabled, "status_reader": status_reader,
+                       "screen_reader": screen_reader, "workspace": workspace,
+                       "avatar_style": avatar_style, "avatar_custom": avatar_custom}
         self.new_pairing_code()
         owner = self
 
@@ -90,7 +97,7 @@ class PhoneServer:
                 self.send_header("Referrer-Policy", "no-referrer")
                 self.send_header("X-Frame-Options", "DENY")
                 self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; "
-                                 "script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; "
+                                 "script-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; "
                                  "form-action 'self'; frame-ancestors 'none'")
                 for key, value in (extra or {}).items():
                     self.send_header(key, value)
@@ -173,8 +180,25 @@ class PhoneServer:
                     self._json(HTTPStatus.OK, {"csrf": session[1], "messages": owner.chat.list(),
                                                "reminders": owner.reminders.list(),
                                                "model": config["model"],
+                                               "avatar_style": config["avatar_style"],
+                                               "avatar_custom": config["avatar_custom"],
+                                               "status_allowed": config["status_reader"] is not None,
+                                               "screen_allowed": config["screen_reader"] is not None,
+                                               "files_allowed": config["workspace"] is not None,
                                                "cloud_allowed": not is_cloud_model(config["model"])
                                                or config["cloud_consent"]})
+                elif self.path == "/api/avatar.png":
+                    with owner._lock:
+                        enabled = owner.config["avatar_custom"]
+                    avatar = owner._avatar_path
+                    if not enabled or not avatar.is_file() or avatar.stat().st_size > 5 * 1024 * 1024:
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "Chưa có ảnh nhân vật."})
+                        return
+                    image = avatar.read_bytes()
+                    if not image.startswith(b"\x89PNG\r\n\x1a\n"):
+                        self._json(HTTPStatus.NOT_FOUND, {"error": "Ảnh nhân vật không hợp lệ."})
+                        return
+                    self._headers(HTTPStatus.OK, "image/png", image)
                 elif self.path.startswith("/api/reminders/") and self.path.endswith(".ics"):
                     reminder_id = self.path[len("/api/reminders/"):-4]
                     try:
@@ -218,8 +242,16 @@ class PhoneServer:
                 try:
                     data = self._body()
                     if self.path == "/api/chat":
-                        answer = owner.reply(data.get("text"))
+                        answer = owner.reply(data.get("text"), session[0], data.get("screen_token"))
                         self._json(HTTPStatus.OK, {"answer": answer})
+                    elif self.path == "/api/device/status":
+                        with owner._lock:
+                            reader = owner.config["status_reader"]
+                        if reader is None:
+                            raise RuntimeError("Hãy bật quyền xem trạng thái PC trên máy tính.")
+                        self._json(HTTPStatus.OK, {"status": reader()})
+                    elif self.path == "/api/screen/preview":
+                        self._json(HTTPStatus.OK, owner.preview_screen(session[0]))
                     elif self.path == "/api/reminders/draft":
                         draft = owner.draft(data.get("text"), data.get("offset_minutes"))
                         self._json(HTTPStatus.OK, draft)
@@ -234,6 +266,7 @@ class PhoneServer:
                     elif self.path == "/api/logout":
                         with owner._lock:
                             owner._sessions.pop(session[0], None)
+                            owner._screens.pop(session[0], None)
                         self._json(HTTPStatus.OK, {"ok": True},
                                    {"Set-Cookie": "mira_phone=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure"})
                     else:
@@ -263,11 +296,14 @@ class PhoneServer:
         self.httpd.server_close()
         with self._lock:
             self._sessions.clear()
+            self._screens.clear()
             self._pair_code = ""
 
     def update_config(self, **changes):
         with self._lock:
             self.config.update(changes)
+            if "screen_reader" in changes and changes["screen_reader"] is None:
+                self._screens.clear()
 
     def new_pairing_code(self) -> str:
         with self._lock:
@@ -297,7 +333,34 @@ class PhoneServer:
             raise RuntimeError("Hãy cho phép Ollama Cloud trong Mira trên máy tính trước khi gửi.")
         return config
 
-    def reply(self, text: str) -> str:
+    def preview_screen(self, session_token: str) -> dict:
+        with self._lock:
+            reader = self.config["screen_reader"]
+        if reader is None:
+            raise RuntimeError("Chưa bật quyền xem màn hình từ điện thoại trong Mira trên máy tính.")
+        image = reader()
+        if not isinstance(image, bytes) or len(image) > 5 * 1024 * 1024 or not image.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise RuntimeError("Ảnh màn hình không hợp lệ hoặc quá 5 MiB.")
+        with self._lock:
+            if self.config["screen_reader"] is not reader or session_token not in self._sessions:
+                raise RuntimeError("Quyền xem màn hình đã bị thu hồi.")
+            ticket = secrets.token_urlsafe(24)
+            self._screens[session_token] = (ticket, time.monotonic() + 120, image)
+        return {"screen_token": ticket, "image": "data:image/png;base64," + base64.b64encode(image).decode("ascii")}
+
+    def _take_screen(self, session_token: str, ticket: str | None) -> bytes | None:
+        if ticket is None:
+            return None
+        if not isinstance(ticket, str):
+            raise ValueError("Ảnh màn hình không hợp lệ.")
+        with self._lock:
+            saved = self._screens.pop(session_token, None)
+            if (self.config["screen_reader"] is None or not saved or
+                    not secrets.compare_digest(ticket, saved[0]) or time.monotonic() > saved[1]):
+                raise RuntimeError("Ảnh đã hết hạn hoặc quyền màn hình đã tắt. Hãy chụp lại.")
+        return saved[2]
+
+    def reply(self, text: str, session_token: str = "", screen_token: str | None = None) -> str:
         if not isinstance(text, str) or not 1 <= len(text.strip()) <= 2000:
             raise ValueError("Tin nhắn phải dài từ 1 đến 2000 ký tự.")
         if not self._request_lock.acquire(blocking=False):
@@ -305,13 +368,18 @@ class PhoneServer:
         try:
             config = self._snapshot()
             request = text.strip()
+            image = self._take_screen(session_token, screen_token)
             memories = ("Trên điện thoại, chat không tạo lịch và không điều khiển máy. "
                         "Nếu được nhờ đặt lịch trong chat, hướng dẫn người dùng mở tab Lịch nhắc, "
-                        "kiểm tra biểu mẫu và bấm Lưu; không nhận đã đặt lịch.\n"
+                        "kiểm tra biểu mẫu và bấm Lưu; không nhận đã đặt lịch. "
+                        "Chỉ nói đã xem màn hình nếu người dùng đính kèm ảnh trong lượt này. "
+                        "Chỉ đọc file trong thư mục được cấp, không sửa hoặc chạy lệnh.\n"
                         "Bộ sở thích:\n" + self.preferences.prompt_for(request) +
                         "\nGhi nhớ được chọn:\n" + (self.memories.prompt_for(request) or "(chưa có)"))
             answer = self.agent.respond(request, self.chat.list(), config["model"],
-                                        config["name"], memories, None, lambda *_: False,
+                                        config["name"], memories, config["workspace"], lambda *_: False,
+                                        image=image, status_reader=config["status_reader"],
+                                        workspace_read_only=True,
                                         fast=config["fast"], persona=config["persona"],
                                         persona_note=config["persona_note"],
                                         web_enabled=config["web_enabled"])
