@@ -16,7 +16,7 @@ Bản cloud riêng ở thư mục `cloud/` cho bạn **chat, ghi chú sở thíc
 
 **Cài một lần:** tạo tài khoản Cloudflare Workers Free, cài Node.js, mở PowerShell trong thư mục `cloud`, chạy `python setup.py`. Lưu URL `*.workers.dev` và khóa đăng nhập chương trình in ra, rồi mở URL trên điện thoại. Để có thông báo Telegram khi laptop tắt, tạo một bot Telegram mới và chạy `python setup_telegram.py`. Xem [hướng dẫn cài đặt, lệnh Telegram và quyền riêng tư](cloud/README.md). Không thể xem trạng thái pin, màn hình, file hay điều khiển laptop tắt nguồn.
 
-Dữ liệu game lesson cũ trong `%LOCALAPPDATA%\Mira\game_lessons.json` không bị xóa; thao tác trên máy tính vẫn cần máy bật và bạn duyệt từng lần. Giao diện Studio 3D, nhập VRM và thư viện dựng 3D đã được gỡ để tập trung cho điện thoại.
+Dữ liệu game lesson cũ trong `%LOCALAPPDATA%\Mira\game_lessons.json` không bị xóa; thao tác trên máy tính vẫn cần máy bật và bạn duyệt từng lần. Giao diện Studio 3D, nhập VRM và thư viện dựng 3D đã được gỡ để tập trung cho điện thoại. Trên trang điện thoại, nút **🎙** cho phép hỏi bằng giọng nói và nghe Mira đáp khi trình duyệt hỗ trợ. Trong **Dạy Mira / bộ nhớ** trên PC, nút gửi/lấy cho phép chuyển các mục ghi nhớ sang cloud sau khi bạn xác nhận; xem [cách nâng cấp dữ liệu và đồng bộ](cloud/README.md).
 
 Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 

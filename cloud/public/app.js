@@ -1,5 +1,10 @@
 const $ = (id) => document.getElementById(id);
-const state = { key: sessionStorage.getItem('miraAccessKey') || '', messages: [], reminders: [], telegram: false, busy: false };
+const state = { key: sessionStorage.getItem('miraAccessKey') || '', messages: [], reminders: [], memories: [], memoryVersion: 0, telegram: false, busy: false, voiceSent: false };
+const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
+let transcript = '';
+let activeUtterance = null;
 
 async function api(path, method = 'GET', data) {
   const response = await fetch(path, {
@@ -12,7 +17,9 @@ async function api(path, method = 'GET', data) {
   try { result = await response.json(); } catch { throw new Error('Không đọc được phản hồi từ Mira.'); }
   if (!response.ok) {
     if (response.status === 401) { sessionStorage.removeItem('miraAccessKey'); $('app').hidden = true; $('login').hidden = false; }
-    throw new Error(result.error || 'Mira đang bận. Bạn thử lại nhé.');
+    const failure = new Error(result.error || 'Mira đang bận. Bạn thử lại nhé.');
+    failure.status = response.status;
+    throw failure;
   }
   return result;
 }
@@ -61,6 +68,13 @@ function renderMessages() {
     else content.textContent = message.content;
     const when = el('time', 'time', timeLabel(message.created_at));
     row.append(who, content, when);
+    if (message.role === 'assistant' && 'speechSynthesis' in window) {
+      const listen = el('button', 'text-button listen-reply', '🔊 Nghe lại');
+      listen.type = 'button';
+      listen.setAttribute('aria-label', 'Nghe câu trả lời của Mira');
+      listen.addEventListener('click', () => speakAnswer(message.content));
+      row.append(listen);
+    }
     box.append(row);
   }
 }
@@ -94,7 +108,120 @@ function renderReminders() {
   }
 }
 
+function renderSharedMemories() {
+  const box = $('shared-memory-list');
+  box.replaceChildren();
+  if (!state.memories.length) box.append(el('div', 'empty', 'Chưa có điều nào được lưu chung.'));
+  for (const item of state.memories) {
+    const row = el('div', 'memory-row');
+    const remove = el('button', '', 'Quên');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', `Quên ${item.text}`);
+    remove.addEventListener('click', async () => {
+      if (!confirm(`Quên điều này trên điện thoại?\n${item.text}`)) return;
+      remove.disabled = true;
+      try { await saveSharedMemories(state.memories.filter(entry => entry.id !== item.id)); }
+      catch (err) { setStatus('memory-status', err.message); remove.disabled = false; }
+    });
+    row.append(el('span', '', item.text), remove);
+    box.append(row);
+  }
+}
+
+async function saveSharedMemories(items) {
+  try {
+    const result = await api('/api/memories', 'PUT', { items, version: state.memoryVersion });
+    state.memories = result.items; state.memoryVersion = result.version;
+    renderSharedMemories();
+    setStatus('memory-status', 'Đã lưu bộ nhớ chung.');
+  } catch (err) {
+    if (err.status === 409) {
+      const latest = await api('/api/memories');
+      state.memories = latest.items; state.memoryVersion = latest.version;
+      renderSharedMemories();
+      throw new Error('Bộ nhớ vừa đổi ở thiết bị khác. Mình đã tải bản mới; hãy kiểm tra rồi thử lại.');
+    }
+    throw err;
+  }
+}
+
+function stopSpeaking() {
+  activeUtterance = null;
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  $('stop-voice').hidden = true;
+}
+
+function speakAnswer(answer) {
+  if (!('speechSynthesis' in window)) {
+    setStatus('chat-status', 'Trình duyệt này chưa hỗ trợ giọng đọc. Bạn vẫn có thể đọc câu trả lời.');
+    return;
+  }
+  stopSpeaking();
+  const utterance = new SpeechSynthesisUtterance(answer.replace(/https?:\/\/\S+|[*_#`]/gu, ' ').slice(0, 1800));
+  utterance.lang = 'vi-VN'; utterance.rate = 1.02;
+  const voice = window.speechSynthesis.getVoices().find(item => item.lang.toLowerCase().startsWith('vi'));
+  if (voice) utterance.voice = voice;
+  utterance.onend = utterance.onerror = () => {
+    if (activeUtterance === utterance) { activeUtterance = null; $('stop-voice').hidden = true; }
+  };
+  activeUtterance = utterance;
+  $('stop-voice').hidden = false;
+  window.speechSynthesis.speak(utterance);
+}
+
+function setListening(value) {
+  listening = value;
+  $('mic').setAttribute('aria-pressed', String(value));
+  $('mic').setAttribute('aria-label', value ? 'Dừng nghe' : 'Nói với Mira');
+  $('mic').title = value ? 'Dừng nghe' : 'Nhấn để nói';
+}
+
+if (!Recognition) {
+  $('mic').disabled = true;
+  $('mic').title = 'Trình duyệt này không hỗ trợ nhận diện giọng nói';
+}
+$('mic').addEventListener('click', () => {
+  if (!Recognition) return;
+  if (listening) { recognition?.stop(); return; }
+  if (state.busy) return;
+  if ($('message').value.trim()) {
+    setStatus('chat-status', 'Bạn hãy gửi hoặc xóa câu đang soạn trước khi bật microphone.');
+    return;
+  }
+  stopSpeaking(); transcript = '';
+  recognition = new Recognition();
+  recognition.lang = 'vi-VN'; recognition.continuous = false; recognition.interimResults = true;
+  recognition.onresult = (event) => {
+    const parts = Array.from(event.results, result => result[0]?.transcript || '');
+    $('message').value = parts.join(' ').trim().slice(0, 1500);
+    if (Array.from(event.results).some(result => result.isFinal)) transcript = $('message').value;
+  };
+  recognition.onerror = (event) => {
+    transcript = '';
+    const hints = { 'not-allowed': 'Hãy cấp quyền microphone cho trang Mira.', 'no-speech': 'Mình chưa nghe rõ. Bạn thử nói lại nhé.', network: 'Nhận diện giọng nói cần mạng trên trình duyệt này.' };
+    setStatus('chat-status', hints[event.error] || 'Không nhận được giọng nói. Bạn có thể gõ tin nhắn.');
+  };
+  recognition.onend = () => {
+    setListening(false); recognition = null;
+    if (transcript && !state.busy && state.key) {
+      $('message').value = transcript;
+      state.voiceSent = true;
+      $('chat-form').requestSubmit();
+    } else if ($('chat-status').textContent.startsWith('Mira đang nghe')) {
+      setStatus('chat-status', 'Đã dừng nghe. Nhấn mic để thử lại.');
+    }
+    transcript = '';
+  };
+  try { recognition.start(); setListening(true); setStatus('chat-status', 'Mira đang nghe… Nhấn mic để dừng.'); }
+  catch { setListening(false); setStatus('chat-status', 'Không mở được microphone. Kiểm tra quyền trình duyệt.'); }
+});
+$('stop-voice').addEventListener('click', stopSpeaking);
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) { transcript = ''; recognition?.abort(); stopSpeaking(); }
+});
+
 function showTab(tab) {
+  if (tab !== 'chat' && listening) { transcript = ''; recognition?.abort(); }
   for (const panel of document.querySelectorAll('.panel')) {
     panel.hidden = panel.id !== tab;
     panel.classList.toggle('active', panel.id === tab);
@@ -112,6 +239,8 @@ async function openMira() {
   state.telegram = session.telegram;
   state.messages = data.messages;
   state.reminders = data.reminders;
+  state.memories = data.memories || [];
+  state.memoryVersion = data.memoryVersion || 0;
   $('notes').value = data.notes;
   $('note-count').textContent = `${data.notes.length} / 1600`;
   $('cloud-state').textContent = 'Mira đang online';
@@ -123,6 +252,7 @@ async function openMira() {
   $('login-error').textContent = '';
   renderMessages();
   renderReminders();
+  renderSharedMemories();
   showTab('chat');
 }
 
@@ -140,6 +270,8 @@ $('chat-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const text = $('message').value.trim();
   if (!text || state.busy) return;
+  const spoken = state.voiceSent;
+  state.voiceSent = false;
   state.busy = true;
   $('send').disabled = true;
   setStatus('chat-status', 'Mira đang nghĩ…');
@@ -152,6 +284,7 @@ $('chat-form').addEventListener('submit', async (event) => {
     state.messages.push({ role: 'assistant', content: response.answer, created_at: new Date().toISOString() });
     $('conversation').lastElementChild?.scrollIntoView({ block: 'end', behavior: 'smooth' });
     setStatus('chat-status', '');
+    if (spoken || $('auto-speak').checked) speakAnswer(response.answer);
   } catch (err) {
     state.messages.pop();
     $('message').value = text;
@@ -192,6 +325,19 @@ $('memory-form').addEventListener('submit', async (event) => {
   try { await api('/api/profile', 'PUT', { notes: $('notes').value }); setStatus('memory-status', 'Đã lưu ghi chú cho Mira.'); }
   catch (err) { setStatus('memory-status', err.message); }
 });
+$('shared-memory-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const input = $('shared-memory-input');
+  const value = input.value.trim();
+  if (!value) return;
+  if (state.memories.some(item => item.text.toLocaleLowerCase('vi') === value.toLocaleLowerCase('vi'))) {
+    setStatus('memory-status', 'Mira đã nhớ điều này rồi.'); return;
+  }
+  try {
+    await saveSharedMemories([...state.memories, { id: crypto.randomUUID(), text: value }]);
+    input.value = '';
+  } catch (err) { setStatus('memory-status', err.message); }
+});
 
 function configureComputerLink() {
   const link = $('computer-link');
@@ -214,6 +360,7 @@ $('computer-url').addEventListener('change', configureComputerLink);
 if ($('computer-url').value) configureComputerLink();
 
 $('logout').addEventListener('click', () => {
+  transcript = ''; recognition?.abort(); stopSpeaking();
   sessionStorage.removeItem('miraAccessKey'); state.key = ''; state.messages = []; state.reminders = [];
   $('app').hidden = true; $('login').hidden = false; $('access-key').focus();
 });

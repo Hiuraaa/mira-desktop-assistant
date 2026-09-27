@@ -18,6 +18,7 @@ from tkinter import filedialog, messagebox, simpledialog, ttk
 
 from .agent import Agent, is_cloud_model
 from .avatar import AnimeAvatar, STYLES
+from .cloud_memory import CloudMemoryClient, validate_cloud_url
 from .desktop import DesktopController, capture_primary_screen
 from .device import device_status
 from .lessons import LessonStore
@@ -66,6 +67,8 @@ class MiraApp(tk.Tk):
         if not isinstance(settings, dict):
             raise ValueError("Cài đặt Mira không đúng định dạng.")
         self.memories = MemoryStore(self.path / "memories.json")
+        self.cloud_phone_url = str(settings.get("cloud_phone_url") or "")
+        self.cloud_phone_key = ""  # Only kept in RAM for this desktop session.
         self.lessons = LessonStore(self.path / "game_lessons.json")
         self.preferences = PreferenceStore(self.path / "preferences.json")
         self.chats = ConversationStore(self.path / "conversations.json", self.path / "conversation.json")
@@ -442,6 +445,7 @@ class MiraApp(tk.Tk):
             "fast_mode": self.fast_var.get(),
             "deep_thinking": self.deep_var.get(),
             "voice_auto": self.voice_auto_var.get(),
+            "cloud_phone_url": self.cloud_phone_url,
             "persona_mode": "playful" if self.playful_var.get() else "standard",
             "persona_note": self.persona_note,
             "avatar_style": self.avatar_style,
@@ -957,7 +961,7 @@ class MiraApp(tk.Tk):
     def _show_memories(self):
         dialog = tk.Toplevel(self)
         dialog.title("Bộ nhớ của Mira")
-        dialog.geometry("640x420")
+        dialog.geometry("680x490")
         dialog.minsize(460, 320)
         dialog.configure(bg=BG)
         dialog.transient(self)
@@ -1015,6 +1019,90 @@ class MiraApp(tk.Tk):
         self._button(controls, "Quên mục đã chọn", forget).pack(side="left", padx=8)
         self._button(controls, "Bộ sở thích", lambda: open_preference_dialog(self, self.preferences,
                      self._button)).pack(side="right")
+
+        sync_status = tk.StringVar(value="Cloud chỉ nhận các mục bạn chọn gửi; khóa không lưu trên máy.")
+        tk.Label(dialog, textvariable=sync_status, bg=BG, fg=MUTED,
+                 wraplength=630, justify="left").pack(anchor="w", padx=18, pady=(0, 5))
+
+        def connect_cloud():
+            url = simpledialog.askstring("Địa chỉ Mira cloud", "URL trang Mira trên điện thoại (*.workers.dev):",
+                                         initialvalue=self.cloud_phone_url, parent=dialog)
+            if url is None:
+                return None
+            try:
+                validate_cloud_url(url)
+            except ValueError as exc:
+                messagebox.showerror("Địa chỉ không hợp lệ", str(exc), parent=dialog)
+                return None
+            key = self.cloud_phone_key or simpledialog.askstring(
+                "Khóa truy cập cloud", "Nhập khóa truy cập Mira cloud (chỉ giữ trong phiên mở app):",
+                show="*", parent=dialog)
+            if key is None:
+                return None
+            try:
+                client = CloudMemoryClient(url, key)
+            except ValueError as exc:
+                messagebox.showerror("Khóa không hợp lệ", str(exc), parent=dialog)
+                return None
+            self.cloud_phone_url = url.strip()
+            self.cloud_phone_key = key
+            self._save_settings()
+            return client
+
+        def sync(direction):
+            client = connect_cloud()
+            if client is None:
+                return
+            sync_status.set("Đang kết nối Mira cloud…")
+
+            def loaded(snapshot):
+                if self.closed or not dialog.winfo_exists():
+                    return
+                local_count = len(self.memories.items)
+                remote_count = len(snapshot["items"])
+                if direction == "upload":
+                    prompt = (f"Gửi {local_count} mục từ PC và THAY toàn bộ {remote_count} mục trên điện thoại?\n"
+                              "Ghi chú riêng trên điện thoại vẫn được giữ. Nếu cần, hãy tải về trước để lưu bản cũ.")
+                else:
+                    prompt = (f"Lấy {remote_count} mục từ điện thoại và THAY toàn bộ {local_count} mục trên PC?\n"
+                              "Nếu cần, hãy xuất hoặc sao lưu bộ nhớ PC trước.")
+                if not messagebox.askyesno("Xác nhận đồng bộ bộ nhớ", prompt, parent=dialog):
+                    sync_status.set("Đã hủy đồng bộ; bộ nhớ không đổi.")
+                    return
+                if direction == "download":
+                    try:
+                        self.memories.replace(snapshot["items"])
+                        reload()
+                        sync_status.set(f"Đã lấy {remote_count} mục từ điện thoại về PC.")
+                    except (OSError, ValueError) as exc:
+                        messagebox.showerror("Không lấy được bộ nhớ", str(exc), parent=dialog)
+                    return
+
+                def upload():
+                    try:
+                        client.put(self.memories.items, snapshot["version"])
+                        self.after(0, lambda: sync_status.set(f"Đã gửi {local_count} mục lên điện thoại.")
+                                   if not self.closed and dialog.winfo_exists() else None)
+                    except (ValueError, OSError) as exc:
+                        self.after(0, lambda message=str(exc): sync_status.set(message)
+                                   if not self.closed and dialog.winfo_exists() else None)
+
+                threading.Thread(target=upload, daemon=True).start()
+
+            def fetch():
+                try:
+                    snapshot = client.get()
+                    self.after(0, lambda: loaded(snapshot))
+                except (ValueError, OSError) as exc:
+                    self.after(0, lambda message=str(exc): sync_status.set(message)
+                               if not self.closed and dialog.winfo_exists() else None)
+
+            threading.Thread(target=fetch, daemon=True).start()
+
+        sync_row = tk.Frame(dialog, bg=BG)
+        sync_row.pack(fill="x", padx=18, pady=(0, 10))
+        self._button(sync_row, "↑ Gửi bộ nhớ lên điện thoại", lambda: sync("upload")).pack(side="left")
+        self._button(sync_row, "↓ Lấy bộ nhớ về PC", lambda: sync("download")).pack(side="left", padx=8)
         reload()
 
     def _cloud_phone_dialog(self):
@@ -1037,7 +1125,8 @@ class MiraApp(tk.Tk):
         tk.Label(dialog, text=steps, bg=PANEL, fg=TEXT, padx=17, pady=17,
                  justify="left", wraplength=570).pack(fill="x", padx=22)
         tk.Label(dialog, text="Gói miễn phí có hạn mức. Lịch nhắc chỉ gửi thông báo khi đã "
-                 "cấu hình bot Telegram. Chat cloud và chat trong app PC lưu ở hai nơi riêng. "
+                 "cấu hình bot Telegram. Chat cloud và chat trong app PC lưu ở hai nơi riêng; "
+                 "bạn có thể gửi/lấy các mục Dạy Mira trong cửa sổ Bộ nhớ. "
                  "Khi máy tắt, không thể xem pin, màn hình hay điều khiển máy.",
                  bg=BG, fg=MUTED, justify="left", wraplength=580).pack(
                      anchor="w", padx=22, pady=(14, 8))

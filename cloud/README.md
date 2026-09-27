@@ -2,7 +2,7 @@
 
 Bản này chạy trên **Cloudflare Workers Free**, dùng model **GLM-4.7-Flash** qua Workers AI, lưu chat/ghi chú/lịch nhắc trong D1. Mở URL riêng `https://mira-phone.<subdomain>.workers.dev/` trên điện thoại để chat. Nếu muốn nhận thông báo lịch ngay cả khi đóng trang, kết nối **một bot Telegram riêng**. Sau khi cài một lần, bạn không cần để laptop bật.
 
-> Đây là dữ liệu **riêng trên cloud**, chưa đồng bộ chat, file hay bộ nhớ từ Mira desktop. Cloud Mira không truy cập được pin, màn hình, file hay chuột của laptop đang tắt. Khi laptop bật, có thể dùng thêm trang Tailscale sẵn có để làm việc với PC theo từng quyền bạn đã cấp.
+> Chat, lịch, ghi chú riêng và file vẫn ở hai nơi riêng. Các mục trong **Dạy Mira / bộ nhớ** có thể chuyển thủ công giữa desktop và cloud bằng nút gửi/lấy. Cloud Mira không truy cập được pin, màn hình, file hay chuột của laptop đang tắt. Khi laptop bật, có thể dùng thêm trang Tailscale sẵn có để làm việc với PC theo từng quyền bạn đã cấp.
 
 ## Chi phí và giới hạn
 
@@ -17,7 +17,19 @@ Chọn **Workers Free** của Cloudflare, không đăng ký gói trả phí ho�
 
 **Nếu muốn làm thủ công** (trong thư mục `cloud`): trên Windows PowerShell, chạy `npx.cmd wrangler login`, `npx.cmd wrangler d1 create mira-phone --no-update-config`, **sau đó** chép `wrangler.toml.example` thành `wrangler.toml`, thay `REPLACE_WITH_YOUR_D1_DATABASE_ID` bằng `database_id` lệnh vừa in ra; tiếp tục `npx.cmd wrangler d1 migrations apply mira-phone --remote`, `npx.cmd wrangler deploy`, `npx.cmd wrangler secret put MIRA_ACCESS_KEY` và nhập một khóa bí mật tự tạo từ 24 ký tự trở lên. Không commit khóa vào GitHub. Trên macOS/Linux, thay `npx.cmd` bằng `npx`.
 
-**Sau khi sửa web:** mở PowerShell trong đúng thư mục `cloud` đã cài (có file `wrangler.toml`), chạy `npx.cmd wrangler deploy` rồi tải lại trang trên điện thoại. Lệnh này cập nhật `public/` và `worker.mjs` lên cùng Worker cũ; không cần chạy lại `setup.py` vì script thiết lập sẽ tạo khóa đăng nhập mới. Nếu PowerShell báo không chạy được `npx.ps1` do Execution Policy, dùng `npx.cmd` như trên, không cần đổi chính sách chạy script.
+**Sau khi sửa web hoặc cập nhật Mira:** mở PowerShell trong đúng thư mục `cloud` đã cài (có file `wrangler.toml`), chạy **`npx.cmd wrangler d1 migrations apply mira-phone --remote` trước**, sau đó chạy `npx.cmd wrangler deploy` và tải lại trang trên điện thoại. Bản này thêm bảng bộ nhớ chung; bỏ qua migration sẽ khiến trang chưa chạy được. Lệnh deploy cập nhật `public/` và `worker.mjs` lên cùng Worker cũ; không cần chạy lại `setup.py` vì script thiết lập sẽ tạo khóa đăng nhập mới. Nếu PowerShell báo không chạy được `npx.ps1` do Execution Policy, dùng `npx.cmd` như trên, không cần đổi chính sách chạy script.
+
+## Nói chuyện bằng giọng nói
+
+Mở tab **Trò chuyện** trên điện thoại, nhấn **🎙**, cấp quyền microphone cho trình duyệt rồi nói tiếng Việt. Khi bạn ngừng nói, Mira gửi câu đã nhận dạng và đọc câu trả lời; nhấn **Dừng đọc** nếu muốn ngắt. Tích **Mira đọc câu trả lời** nếu muốn cả tin gõ tay cũng được đọc. Bạn có thể nhấn **Nghe lại** bên dưới tin Mira để chủ động phát tiếng khi trình duyệt chặn tự phát. Microphone chỉ bật khi bạn nhấn, không nghe ở nền hoặc khi rời trang. Tính năng nhận giọng nói phụ thuộc trình duyệt; một số trình duyệt xử lý âm thanh qua máy chủ của chính trình duyệt và cần mạng, có thể không hỗ trợ tiếng Việt. Nếu không thấy nút khả dụng, vẫn có thể dùng bàn phím và đọc tin nhắn. Giọng đọc dùng giọng có sẵn trên điện thoại; nếu thiếu giọng tiếng Việt, phát âm có thể không chuẩn. Không cần trả phí thêm cho nút này, nhưng mỗi tin gửi AI vẫn tính vào hạn mức cloud.
+
+## Mang bộ nhớ từ PC sang điện thoại
+
+1. Cập nhật app desktop và cloud như trên. Trên PC mở **Dạy Mira / bộ nhớ**, nhập các mục bạn muốn dùng chung.
+2. Chọn **↑ Gửi bộ nhớ lên điện thoại**, nhập URL `https://...workers.dev/` và khóa truy cập của bản Mira cloud. Đọc số lượng mục ở hai phía rồi xác nhận. URL được lưu trên PC; **khóa chỉ giữ trong RAM đến khi tắt app**.
+3. Mở tab **Ghi nhớ** trên điện thoại để thêm hoặc quên từng mục. Khi muốn dùng bản mới nhất trên PC, chọn **↓ Lấy bộ nhớ về PC** trong cùng cửa sổ desktop.
+
+Mỗi lần gửi/lấy sẽ **thay toàn bộ danh sách mục ở phía nhận** sau khi hỏi xác nhận. Nên lấy về trước khi gửi nếu vừa sửa trên điện thoại. **Ghi chú cá nhân** trong trang điện thoại vẫn riêng và không bị thay; bộ sở thích JSON, lịch sử chat, lịch nhắc và file trên PC không đồng bộ. Nếu PC bị tắt, Mira cloud vẫn dùng các mục đã gửi trước đó, nhưng không cập nhật các mục mới trên PC cho đến lần gửi tiếp theo.
 
 Nếu vừa cập nhật cách Mira trả lời, hãy gửi một tin nhắn mới để thử; các câu trả lời cũ trong lịch sử không tự đổi. Bạn có thể chọn **Trò chuyện → Xóa lịch sử** để bắt đầu lại, nhưng thao tác này cũng xóa lịch sử chat qua Telegram trên cùng Mira cloud.
 
@@ -40,5 +52,5 @@ Trong app desktop Mira, chọn **Kết nối khi máy bật** → bật giao di�
 
 - Trang cloud cần khóa cá nhân ngẫu nhiên tối thiểu 24 ký tự; mỗi yêu cầu API phải gửi khóa đó qua HTTPS, giữ trong `sessionStorage` của thẻ trình duyệt. Không cho người khác dùng chung khóa hay máy đã đăng nhập. Chọn **Máy tính → Khóa Mira** để xóa khóa ở thẻ đang mở.
 - Chat và ghi chú lưu trong D1, gửi trong yêu cầu suy luận tới Workers AI. Telegram cũng nhận nội dung tin nhắn và lịch qua bot do bạn tạo. Không gửi mật khẩu, API key hoặc tài liệu cần bảo mật nghiêm ngặt.
-- Tab **Trò chuyện → Xóa lịch sử** xóa toàn bộ lịch sử cloud, bao gồm từ Telegram. Lịch và ghi chú được lưu riêng. Bản desktop và bản cloud hiện không tự đồng bộ.
+- Tab **Trò chuyện → Xóa lịch sử** xóa toàn bộ lịch sử cloud, bao gồm từ Telegram. Lịch và ghi chú được lưu riêng. Chỉ các mục bộ nhớ bạn chọn gửi/lấy mới được dùng ở cả desktop và cloud.
 - Có thể tự đặt lịch trên điện thoại ngay cả khi chưa cấu hình Telegram, nhưng muốn nhận thông báo khi trang đóng phải kết nối bot. Lịch quan trọng cần báo thức của điện thoại làm dự phòng.

@@ -80,6 +80,22 @@ class MemoryStore:
         save_json(self.path, updated)
         self.items = updated
 
+    def replace(self, items: list[dict]) -> None:
+        """Replace user-selected memories atomically after validating remote data."""
+        if not isinstance(items, list) or len(items) > 50:
+            raise ValueError("Bộ nhớ tối đa 50 mục.")
+        ids = set()
+        for item in items:
+            if (not isinstance(item, dict) or not isinstance(item.get("id"), str)
+                    or not re.fullmatch(r"[0-9a-fA-F-]{32,36}", item["id"])
+                    or item["id"] in ids or not isinstance(item.get("text"), str)
+                    or not item["text"].strip() or len(item["text"]) > 500):
+                raise ValueError("Bộ nhớ từ điện thoại có mục không hợp lệ.")
+            ids.add(item["id"])
+        updated = [{"id": item["id"], "text": item["text"].strip()} for item in items]
+        save_json(self.path, updated)
+        self.items = updated
+
     # Keep the v2 API used by existing installations and their checks.
     update = edit
 

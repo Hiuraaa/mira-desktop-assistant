@@ -32,6 +32,13 @@ jobs:
       - name: Run tests on Windows
         if: runner.os == 'Windows'
         run: python -m unittest discover -s tests -v
+      - uses: actions/setup-node@v7
+        if: runner.os == 'Linux'
+        with:
+          node-version: '24'
+      - name: Run phone cloud tests
+        if: runner.os == 'Linux'
+        run: node --test cloud/tests/worker.test.mjs
       - name: Capture desktop preview on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -95,6 +102,7 @@ jobs:
             run_mira.py
             start_windows.bat
             mira/
+            cloud/
             tests/
           include-hidden-files: true
           if-no-files-found: error
