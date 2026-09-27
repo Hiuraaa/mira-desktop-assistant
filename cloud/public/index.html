@@ -9,7 +9,7 @@
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/app.css">
   <title>Mira · luôn ở bên bạn</title>
-  <script src="/app.js?v=2" defer></script>
+  <script src="/app.js?v=3" defer></script>
 </head>
 <body>
   <div id="login" class="login-shell">
@@ -49,9 +49,10 @@
         <form id="chat-form" class="composer">
           <label for="message" class="sr-only">Nhắn cho Mira</label>
           <textarea id="message" rows="2" maxlength="1500" placeholder="Nhắn cho Mira…" required></textarea>
+          <button id="mic" class="voice-btn" type="button" aria-label="Nói với Mira" aria-pressed="false" title="Nhấn để nói">🎙</button>
           <button id="send" class="send-btn" type="submit" aria-label="Gửi tin nhắn">↗</button>
         </form>
-        <div class="chat-options"><span>Enter để gửi · Shift+Enter xuống dòng</span><button id="clear-chat" type="button" class="text-button">Xóa lịch sử</button></div>
+        <div class="chat-options"><label class="voice-option"><input id="auto-speak" type="checkbox"> Mira đọc câu trả lời</label><button id="stop-voice" type="button" class="text-button" hidden>Dừng đọc</button><button id="clear-chat" type="button" class="text-button">Xóa lịch sử</button></div>
       </section>
 
       <section id="reminders" class="panel" hidden aria-label="Lịch nhắc">
@@ -84,6 +85,16 @@
           <textarea id="notes" rows="9" maxlength="1600" placeholder="Ví dụ: Gọi mình là anh Đồng. Mình thích giải thích ngắn gọn, kèm ví dụ thực tế…"></textarea>
           <div class="form-footer"><span id="note-count">0 / 1600</span><button class="btn primary" type="submit">Lưu cho Mira</button></div>
         </form>
+        <div class="surface form-stack">
+          <h3>Điều Mira nhớ trên cả PC và điện thoại</h3>
+          <p>Lưu từng điều riêng. Trên PC, mở “Dạy Mira / bộ nhớ” để gửi hoặc lấy các mục này.</p>
+          <form id="shared-memory-form" class="form-stack">
+            <label for="shared-memory-input">Dạy Mira một điều</label>
+            <input id="shared-memory-input" maxlength="500" placeholder="Ví dụ: Mình thích giải thích ngắn và có ví dụ" required>
+            <button class="btn secondary" type="submit">+ Ghi nhớ</button>
+          </form>
+          <div id="shared-memory-list" class="reminder-list" aria-live="polite"></div>
+        </div>
         <p id="memory-status" class="status-line" role="status"></p>
         <div class="notice">Ghi chú và tin nhắn được lưu trong tài khoản Cloudflare của bạn. Chỉ nhập điều bạn muốn gửi đến mô hình AI cloud.</div>
       </section>

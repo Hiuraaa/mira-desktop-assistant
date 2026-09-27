@@ -12,6 +12,7 @@ class D1 {
   constructor() {
     this.db = new DatabaseSync(':memory:');
     this.db.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+    this.db.exec(readFileSync(new URL('../migrations/0002_shared_memories.sql', import.meta.url), 'utf8'));
   }
   prepare(sql) {
     const statement = this.db.prepare(sql);
@@ -224,4 +225,21 @@ test('AI quota does not save a phantom answer and time request works without AI'
   const time = await call(cloud, '/api/chat', 'POST', { text: 'Mấy giờ rồi?' });
   assert.equal(time.status, 200);
   assert.match(time.result.answer, /Asia\/Ho_Chi_Minh/);
+});
+
+test('shared memories require owner key, reject stale writes and shape cloud replies', async () => {
+  const cloud = env();
+  const item = { id: '12345678-1234-4234-9234-123456789abc', text: 'Mình thích câu trả lời ngắn.' };
+  assert.equal((await call(cloud, '/api/memories', 'PUT', { items: [item], version: 0 }, 'wrong')).status, 401);
+  assert.equal((await call(cloud, '/api/memories', 'PUT', { items: [{ ...item, text: 'x'.repeat(501) }], version: 0 })).status, 400);
+  assert.equal((await call(cloud, '/api/memories', 'PUT', { items: [item, item], version: 0 })).status, 400);
+  const saved = await call(cloud, '/api/memories', 'PUT', { items: [item], version: 0 });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.result.version, 1);
+  assert.equal((await call(cloud, '/api/memories', 'PUT', { items: [], version: 0 })).status, 409);
+  assert.deepEqual((await call(cloud, '/api/bootstrap')).result.memories, [item]);
+  await call(cloud, '/api/chat', 'POST', { text: 'Chào Mira' });
+  assert.match(cloud.calls.at(-1).body.messages[0].content, /Mình thích câu trả lời ngắn/);
+  assert.equal((await call(cloud, '/api/memories', 'PUT', { items: [], version: 1 })).status, 200);
+  assert.deepEqual((await call(cloud, '/api/memories')).result.items, []);
 });
