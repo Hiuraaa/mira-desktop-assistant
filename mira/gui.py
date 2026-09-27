@@ -336,8 +336,13 @@ class MiraApp(tk.Tk):
         self.input.bind("<Return>", self._send)
         self.input.bind("<Control-Return>", self._send)
         self.input.bind("<Shift-Return>", self._newline)
+        # Keep Send outside the packed toolbar: at narrow widths its left-hand
+        # buttons can consume the entire row and leave Send unmapped.
+        self.send_button = self._button(composer, "Gửi  ↗", self._send,
+                                        primary=True, compact=True)
+        self.send_button.grid(row=1, column=1, sticky="ns", padx=(8, 0))
         compose_tools = tk.Frame(composer, bg=PANEL)
-        compose_tools.grid(row=2, column=0, sticky="ew", pady=(5, 0))
+        compose_tools.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(5, 0))
         self._button(compose_tools, "＋ Ảnh", self._attach_image, compact=True,
                      background=PANEL).pack(side="left")
         self.voice_button = self._button(compose_tools, "🎙 Nói", self._start_dictation,
@@ -354,9 +359,6 @@ class MiraApp(tk.Tk):
                  font=("Segoe UI", 9), anchor="w", width=12).pack(side="left", padx=5)
         self._button(compose_tools, "Bỏ ảnh", self._clear_image, compact=True,
                      background=PANEL).pack(side="left")
-        self.send_button = self._button(compose_tools, "Gửi  ↗", self._send,
-                                        primary=True, compact=True)
-        self.send_button.pack(side="right")
         status = tk.Frame(desk, bg=BG)
         status.grid(row=3, column=0, sticky="ew")
         tk.Label(status, textvariable=self.status_var, bg=BG, fg=MUTED,
