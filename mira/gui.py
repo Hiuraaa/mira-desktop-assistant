@@ -281,7 +281,7 @@ class MiraApp(tk.Tk):
             width=min(900, max(440, event.width - 20))))
 
         head = tk.Frame(desk, bg=BG)
-        head.grid(row=0, column=0, sticky="ew", pady=(3, 14))
+        head.grid(row=0, column=0, sticky="ew", pady=(1, 8))
         head_top = tk.Frame(head, bg=BG)
         head_top.pack(fill="x")
         self.avatar = AnimeAvatar(head_top, size=70, bg=BG, style=self.avatar_style,
@@ -312,11 +312,9 @@ class MiraApp(tk.Tk):
             title_label.configure(wraplength=max(120, event.width - 8)),
             folder_label.configure(wraplength=max(120, event.width - 8))))
 
-        presence = tk.Frame(head, bg=SURFACE, padx=11, pady=7,
+        presence = tk.Frame(head, bg=SURFACE, padx=11, pady=5,
                             highlightthickness=1, highlightbackground=BORDER)
-        presence.pack(fill="x", pady=(12, 0))
-        tk.Label(presence, text="●", bg=SURFACE, fg=BLUE,
-                 font=("Segoe UI", 11)).pack(side="left", padx=(0, 7))
+        presence.pack(fill="x", pady=(8, 0))
         tk.Label(presence, textvariable=self.model_var, bg=SURFACE, fg=ACCENT,
                  font=("Segoe UI", 9, "bold")).pack(side="right", padx=(9, 0))
         self.presence_health = tk.Label(presence, textvariable=self.health_var,
@@ -347,13 +345,13 @@ class MiraApp(tk.Tk):
         self._pending_label: tk.Label | None = None
         self.starters: tk.Frame | None = None
 
-        composer = tk.Frame(desk, bg=PANEL, padx=15, pady=12,
+        composer = tk.Frame(desk, bg=PANEL, padx=15, pady=10,
                             highlightthickness=1, highlightbackground=BORDER)
-        composer.grid(row=2, column=0, sticky="ew", pady=(12, 8))
+        composer.grid(row=2, column=0, sticky="ew", pady=(8, 5))
         composer.grid_columnconfigure(0, weight=1)
         tk.Label(composer, text="NHẮN MIRA", bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
-                     row=0, column=0, sticky="ew", pady=(0, 6))
+                     row=0, column=0, sticky="ew", pady=(0, 4))
         self.attachment_chip = tk.Frame(composer, bg=SURFACE)
         self.attachment_chip.grid(row=0, column=1, sticky="e", pady=(0, 5))
         tk.Label(self.attachment_chip, textvariable=self.attachment_var, bg=SURFACE,
@@ -378,7 +376,7 @@ class MiraApp(tk.Tk):
                                         primary=True, compact=True)
         self.send_button.grid(row=1, column=1, sticky="ns", padx=(8, 0))
         compose_tools = tk.Frame(composer, bg=PANEL)
-        compose_tools.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(9, 0))
+        compose_tools.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self._button(compose_tools, "＋ Ảnh", self._attach_image, compact=True,
                      background=PANEL).pack(side="left")
         self.voice_button = self._button(compose_tools, "🎙 Nói", self._start_dictation,
@@ -791,6 +789,7 @@ class MiraApp(tk.Tk):
                 self._bind_feed_scroll(widget)
 
     def _resize_feed(self, event):
+        at_bottom = self.feed_canvas.yview()[1] >= 0.96
         self.feed_canvas.itemconfigure(self.feed_window, width=event.width)
         wrap = max(240, min(700, event.width - 100))
         for label in self._message_labels:
@@ -798,6 +797,8 @@ class MiraApp(tk.Tk):
                 label.configure(wraplength=wrap)
         if hasattr(self, "_welcome_note") and self._welcome_note.winfo_exists():
             self._welcome_note.configure(wraplength=max(220, event.width - 75))
+        if at_bottom:
+            self.after_idle(lambda: self.feed_canvas.yview_moveto(1.0))
 
     def _bind_feed_scroll(self, widget):
         widget.bind("<MouseWheel>", self._scroll_feed)
@@ -811,9 +812,9 @@ class MiraApp(tk.Tk):
 
     def _message_card(self, sender: str, content: str, *, user=False):
         row = tk.Frame(self.messages_frame, bg=BG)
-        row.pack(fill="x", padx=9, pady=8)
+        row.pack(fill="x", padx=9, pady=6)
         color = USER_CARD if user else MIRA_CARD
-        card = tk.Frame(row, bg=color, padx=17, pady=13,
+        card = tk.Frame(row, bg=color, padx=17, pady=11,
                         highlightthickness=1,
                         highlightbackground="#514d79" if user else BORDER)
         card.pack(side="right" if user else "left",
