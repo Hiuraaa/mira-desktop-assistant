@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import base64
+import ctypes
 import re
 import shutil
 import subprocess
 import sys
 import threading
 from typing import Callable
+
+
+def start_windows_dictation() -> None:
+    """Open the owner's Windows voice typing UI in the currently focused text box."""
+    if sys.platform != "win32":
+        raise RuntimeError("Nhập giọng nói trong app hiện cần Windows 11 hoặc Windows hỗ trợ Win+H.")
+    user32 = ctypes.windll.user32
+    key_up = 0x0002
+    try:
+        user32.keybd_event(0x5B, 0, 0, 0)     # Left Windows key
+        user32.keybd_event(0x48, 0, 0, 0)     # H
+        user32.keybd_event(0x48, 0, key_up, 0)
+    finally:
+        user32.keybd_event(0x5B, 0, key_up, 0)
 
 
 def clean_for_speech(text: str) -> str:
