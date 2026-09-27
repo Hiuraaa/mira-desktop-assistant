@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Check Python syntax
-        run: python -m compileall -q mira tests run_mira.py
+        run: python -m compileall -q mira tests examples run_mira.py
       - name: Run tests on Linux
         if: runner.os == 'Linux'
         shell: bash
@@ -102,6 +102,7 @@ jobs:
             run_mira.py
             start_windows.bat
             mira/
+            examples/
             cloud/
             tests/
           include-hidden-files: true

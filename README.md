@@ -18,6 +18,12 @@ Bản cloud riêng ở thư mục `cloud/` cho bạn **chat, ghi chú sở thíc
 
 Dữ liệu game lesson cũ trong `%LOCALAPPDATA%\Mira\game_lessons.json` không bị xóa; thao tác trên máy tính vẫn cần máy bật và bạn duyệt từng lần. Giao diện Studio 3D, nhập VRM và thư viện dựng 3D đã được gỡ để tập trung cho điện thoại. Trên trang điện thoại, nút **🎙** cho phép hỏi bằng giọng nói và nghe Mira đáp khi trình duyệt hỗ trợ. Trong **Dạy Mira / bộ nhớ** trên PC, nút gửi/lấy cho phép chuyển các mục ghi nhớ sang cloud sau khi bạn xác nhận; xem [cách nâng cấp dữ liệu và đồng bộ](cloud/README.md).
 
+### Trò chuyện và chơi game trên PC
+
+- Nhấn **🎙 Nói** ngay cạnh ô chat để mở tính năng nhập giọng nói có sẵn của Windows (Windows + H). Cấp quyền microphone cho Windows nếu được hỏi; nói xong dừng microphone trong giao diện nhập giọng nói của Windows, xem lại văn bản rồi nhấn **Gửi**. Mira sẽ đọc câu trả lời bằng giọng Windows. Trên Windows 11, Microsoft liệt kê tiếng Việt trong các ngôn ngữ hỗ trợ nhập giọng nói; khả năng trên máy khác phụ thuộc Windows, microphone, ngôn ngữ nhập và kết nối mạng. Nếu hệ thống không bật lên từ nút này, nhấn Windows + H thủ công khi con trỏ đang ở ô chat.
+- Nhấn **✦ Nhận xét** cạnh ô chat để Mira xem **một ảnh** màn hình vừa chụp. Bạn xem trước và xác nhận ảnh trước khi gửi; Mira không tự chụp tiếp ở nền. Nếu dùng model cloud, ảnh đã chọn sẽ được gửi tới dịch vụ đó.
+- Mở **♟ Chơi game với Mira** → **Bật kết nối** → **Chơi Cờ caro mẫu** để thử một ván. Bạn đánh X, sau đó yêu cầu Mira phản ứng với sự kiện mới nhất hoặc bật tự nhận xét. Khi Mira chọn O, app luôn hỏi bạn duyệt nước đi. Mỗi game khác cần một adapter đưa trạng thái và những nước hợp lệ của game đó vào cổng localhost; xem [giao thức và ví dụ](examples/game_bridge_protocol.md). Model cần hỗ trợ gọi công cụ để tự chọn nước; model chat thuần có thể bình luận. Kết nối chỉ mở trong phiên, tắt khi đóng app.
+
 Máy yếu có thể mất thời gian để tạo câu trả lời đầu tiên. Khi mô hình chưa được tải, Mira sẽ hiển thị hướng dẫn ngay trên màn hình. Nếu Python Launcher (`py`) không có, file `.bat` sẽ thử `python`.
 
 ### Nếu Mira trả lời chậm
@@ -62,7 +68,7 @@ Mira không âm thầm theo dõi màn hình hoặc nghe microphone. Telegram kh�
 | Làm việc với code/file | Bấm **Mở tất cả công cụ → Chọn thư mục** rồi **＋ File** cạnh ô chat để điền đường dẫn. Mira chỉ đọc/tìm và đề xuất sửa file trong thư mục đó. Có thể bỏ quyền trong **Mô hình & cài đặt**. |
 | Sửa file | Mira hiển thị diff đầy đủ. Chọn **Duyệt và ghi file** hoặc **Từ chối**. File cũ được sao lưu trước khi ghi. |
 | Kiểm tra Python | Hỏi “Kiểm tra cú pháp `src/app.py`”. Mira phân tích cú pháp mà không chạy chương trình. |
-| Chạy kiểm thử dự án | Bấm **▶ Kiểm thử** cạnh ô chat. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
+| Chạy kiểm thử dự án | Bấm **▶ Kiểm thử** trong mục công cụ. Mira hiện chính xác lệnh Python unittest hoặc npm test và thư mục chạy; chỉ thực hiện sau khi bạn đồng ý. |
 | Dạy dần | Bấm **Mở tất cả công cụ → Dạy Mira / bộ nhớ** để thêm, sửa hoặc xóa điều cần nhớ; mở **Bộ sở thích** để chỉnh quy tắc, thêm ví dụ “câu hỏi → câu trả lời mẫu”, hoặc xuất/nhập JSON. |
 | Chọn tính cách | Bật/tắt **✦ Mira hoạt bát** ngay phía trên hội thoại. Trong **Mô hình & cài đặt**, bạn có thể thêm vài dòng mô tả cách nói chuyện bạn thích rồi bấm **Lưu**. |
 | Nghe Mira trả lời | Sau một câu trả lời, bấm **🔊 Nghe**; bấm lại để dừng. Trong **Mô hình & cài đặt**, có thể bật tự đọc sau mỗi câu trả lời. Windows dùng giọng đã cài trên máy; chất lượng tiếng Việt phụ thuộc vào giọng có sẵn. |
