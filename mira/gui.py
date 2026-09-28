@@ -279,7 +279,7 @@ class MiraApp(tk.Tk):
                                   compact=True, background=SIDE_SURFACE, rounded=True)
         open_tools.grid(row=1, column=0, sticky="ew")
 
-        main = tk.Frame(self, bg=BG, padx=23, pady=18)
+        main = tk.Frame(self, bg=BG, padx=23, pady=12)
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(0, weight=1)
@@ -298,7 +298,7 @@ class MiraApp(tk.Tk):
             width=min(900, max(440, event.width - 20))))
 
         head = tk.Frame(desk, bg=BG)
-        head.grid(row=0, column=0, sticky="ew", pady=(1, 8))
+        head.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         head_top = tk.Frame(head, bg=BG)
         head_top.pack(fill="x")
         self.avatar = AnimeAvatar(head_top, size=78, bg=BG, style=self.avatar_style,
@@ -364,7 +364,7 @@ class MiraApp(tk.Tk):
 
         composer = SoftCard(desk, fill=PANEL, backdrop=BG, pad_x=15,
                             pad_y=11, radius=20, expand_content=True)
-        composer.grid(row=2, column=0, sticky="ew", pady=(8, 5))
+        composer.grid(row=2, column=0, sticky="ew", pady=(5, 3))
         compose_body = composer.content
         compose_body.grid_columnconfigure(0, weight=1)
         tk.Label(compose_body, text="NHẮN MIRA", bg=PANEL, fg=ACCENT,
@@ -502,6 +502,19 @@ class MiraApp(tk.Tk):
         self.device_button.pack(fill="x", pady=(4, 3))
         if sys.platform != "win32":
             self.device_button.configure(state="disabled", text="Trạng thái PC: chỉ Windows")
+
+        def scroll_rail(event):
+            direction = -1 if getattr(event, "num", None) == 4 or event.delta > 0 else 1
+            rail_canvas.yview_scroll(direction * 3, "units")
+            return "break"
+
+        def bind_rail_scroll(widget):
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(sequence, scroll_rail)
+            for child in widget.winfo_children():
+                bind_rail_scroll(child)
+
+        bind_rail_scroll(rail_canvas)
 
         def resize_main(event):
             if event.widget is main:
@@ -775,8 +788,15 @@ class MiraApp(tk.Tk):
             self._render_welcome()
         if self.busy and self.stream_chat_id == self.active_chat_id:
             self._show_pending(self.name_var.get())
-        self.after_idle(lambda: self.feed_canvas.yview_moveto(
-            1.0 if item["messages"] else 0.0))
+        render_id = self.active_chat_id
+
+        def align_feed():
+            if not self.closed and render_id == self.active_chat_id:
+                self.feed_canvas.yview_moveto(1.0 if item["messages"] else 0.0)
+
+        self.after_idle(align_feed)
+        # Rounded cards settle their canvas sizes after Tk's first layout pass.
+        self.after(80, align_feed)
 
     def _render_welcome(self):
         self.starters = tk.Frame(self.messages_frame, bg=BG)
