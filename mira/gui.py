@@ -31,21 +31,26 @@ from .reminders import ReminderStore, draft_reminder
 from .speech import SpeechPlayer, start_windows_dictation
 from .storage import ConversationStore, MemoryStore, data_dir, load_json, save_json
 from .telegram_bot import TelegramBot
+from .ui_widgets import SoftButton, SoftCard
 from .workspace import Workspace, WorkspaceError
 
 
-BG = "#0e1322"
-SIDE = "#141a2c"
-PANEL = "#1b2336"
-SURFACE = "#263149"
-BORDER = "#34435d"
-TEXT = "#f6f4ff"
-MUTED = "#a8b5cb"
-ACCENT = "#c3afff"
-BLUE = "#80e0d6"
-INK = "#201930"
-USER_CARD = "#302d55"
-MIRA_CARD = "#1c293f"
+BG = "#f6f4fa"
+SIDE = "#211c37"
+PANEL = "#ffffff"
+SURFACE = "#eeeaf8"
+BORDER = "#e2ddeb"
+TEXT = "#25203a"
+MUTED = "#706a83"
+ACCENT = "#6548cd"
+BLUE = "#117f79"
+INK = "#ffffff"
+WARNING = "#a94444"
+SIDE_TEXT = "#f9f6ff"
+SIDE_MUTED = "#aaa3c4"
+SIDE_SURFACE = "#352b50"
+USER_CARD = "#eae3fa"
+MIRA_CARD = "#ffffff"
 
 
 class MiraApp(tk.Tk):
@@ -160,15 +165,21 @@ class MiraApp(tk.Tk):
                 self.status_var.set("Telegram chưa kết nối được; mở mục Điện thoại để kiểm tra.")
 
     def _button(self, parent, label, command, *, primary=False, subtle=False,
-                compact=False, background=None):
+                compact=False, background=None, rounded=False):
         normal = ACCENT if primary else (background or (SIDE if subtle else PANEL))
-        hovered = "#d8caff" if primary else ("#344360" if normal == SURFACE else SURFACE)
+        hovered = "#5335b5" if primary else ("#483963" if normal in (SIDE, SIDE_SURFACE)
+                                             else "#ddd5f2")
+        foreground = INK if primary else (SIDE_TEXT if normal in (SIDE, SIDE_SURFACE) else TEXT)
+        if rounded:
+            return SoftButton(parent, label, command, fill=normal, hover=hovered,
+                              foreground=foreground, backdrop=parent.cget("bg"),
+                              compact=compact)
         button = tk.Button(parent, text=label, command=command, relief="flat", cursor="hand2",
-                           bg=normal, fg=INK if primary else TEXT,
-                           activebackground=hovered, activeforeground=INK if primary else TEXT,
+                           bg=normal, fg=foreground,
+                           activebackground=hovered, activeforeground=foreground,
                            font=("Segoe UI", 10, "bold"),
                            padx=10 if compact else 14, pady=6 if compact else 10,
-                           borderwidth=0, takefocus=True, disabledforeground="#78869f",
+                           borderwidth=0, takefocus=True, disabledforeground="#9993aa",
                            highlightthickness=1, highlightbackground=normal,
                            highlightcolor=ACCENT)
         button.bind("<Enter>", lambda _: button.configure(bg=hovered)
@@ -179,52 +190,58 @@ class MiraApp(tk.Tk):
     def _build(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
-        sidebar = tk.Frame(self, bg=SIDE, width=248, padx=17, pady=20)
+        sidebar = tk.Frame(self, bg=SIDE, width=235, padx=17, pady=19)
         sidebar.grid(row=0, column=0, sticky="ns")
         sidebar.grid_propagate(False)
         sidebar.grid_columnconfigure(0, weight=1)
         sidebar.grid_rowconfigure(5, weight=1)
         brand = tk.Frame(sidebar, bg=SIDE)
         brand.grid(row=0, column=0, sticky="ew", pady=(3, 3))
-        tk.Label(brand, text="✦", bg="#312b50", fg=ACCENT,
+        tk.Label(brand, text="✦", bg=SIDE_SURFACE, fg="#d7c7ff",
                  font=("Segoe UI", 22, "bold"), padx=10, pady=3).pack(side="left", padx=(0, 10))
         brand_text = tk.Frame(brand, bg=SIDE)
         brand_text.pack(side="left", anchor="center")
-        tk.Label(brand_text, text="Mira", bg=SIDE, fg=TEXT,
+        tk.Label(brand_text, text="Mira", bg=SIDE, fg=SIDE_TEXT,
                  font=("Segoe UI", 23, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(brand_text, text="AI COMPANION", bg=SIDE, fg=MUTED,
+        tk.Label(brand_text, text="AI COMPANION", bg=SIDE, fg=SIDE_MUTED,
                  font=("Segoe UI", 8, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(sidebar, text="KHÔNG GIAN CỦA BẠN", bg=SIDE, fg=MUTED,
+        tk.Label(sidebar, text="KHÔNG GIAN CỦA BẠN", bg=SIDE, fg=SIDE_MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
                      row=1, column=0, sticky="ew", pady=(12, 17))
-        self._button(sidebar, "＋  Trò chuyện mới", self._new_chat, primary=True).grid(
+        self._button(sidebar, "＋  Trò chuyện mới", self._new_chat,
+                     primary=True, rounded=True).grid(
             row=2, column=0, sticky="ew", pady=(0, 13))
         self._button(sidebar, "☁  Điện thoại khi máy tắt",
-                     self._cloud_phone_dialog, background=SURFACE).grid(row=3, column=0,
-                                                                       sticky="ew", pady=(0, 7))
+                     self._cloud_phone_dialog, background=SIDE_SURFACE,
+                     compact=True, rounded=True).grid(row=3, column=0,
+                                                      sticky="ew", pady=(0, 7))
         self.phone_button = self._button(sidebar, "◈  Kết nối khi máy bật",
-                                         self._mobile_dialog, background=SURFACE)
+                                         self._mobile_dialog, background=SIDE_SURFACE,
+                                         compact=True, rounded=True)
         self.phone_button.grid(row=4, column=0, sticky="ew", pady=(0, 21))
         archive = tk.Frame(sidebar, bg=SIDE)
         archive.grid(row=5, column=0, sticky="nsew")
         archive.grid_columnconfigure(0, weight=1)
         archive.grid_rowconfigure(1, weight=1)
-        tk.Label(archive, text="CUỘC TRÒ CHUYỆN", bg=SIDE, fg=MUTED,
+        tk.Label(archive, text="CUỘC TRÒ CHUYỆN", bg=SIDE, fg=SIDE_MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(row=0, column=0, sticky="ew", pady=(0, 8))
         self.chat_list = tk.Listbox(archive, selectmode="browse", activestyle="none", relief="flat",
-                                    bg=SIDE, fg=TEXT, selectbackground="#38365f", selectforeground=TEXT,
-                                    font=("Segoe UI", 10), highlightthickness=0, borderwidth=0,
+                                    bg=SIDE, fg=SIDE_TEXT, selectbackground=SIDE_SURFACE,
+                                    selectforeground=SIDE_TEXT, font=("Segoe UI", 10),
+                                    highlightthickness=0, borderwidth=0,
                                     exportselection=False)
         self.chat_list.grid(row=1, column=0, sticky="nsew")
         self.chat_list.bind("<<ListboxSelect>>", self._select_chat)
         actions = tk.Frame(sidebar, bg=SIDE)
         actions.grid(row=6, column=0, sticky="ew", pady=(8, 8))
-        self._button(actions, "Đổi tên", self._rename_chat, subtle=True).pack(side="left", fill="x", expand=True)
-        self._button(actions, "Xóa", self._delete_chat, subtle=True).pack(side="left", fill="x", expand=True)
+        self._button(actions, "Đổi tên", self._rename_chat,
+                     subtle=True, compact=True, rounded=True).pack(side="left", fill="x", expand=True)
+        self._button(actions, "Xóa", self._delete_chat,
+                     subtle=True, compact=True, rounded=True).pack(side="left", fill="x", expand=True)
         tools = tk.Frame(sidebar, bg=SIDE)
         tools.grid(row=7, column=0, sticky="ew", pady=(7, 0))
         tools.grid_columnconfigure(0, weight=1)
-        tk.Label(tools, text="CÔNG CỤ", bg=SIDE, fg=MUTED,
+        tk.Label(tools, text="CÔNG CỤ", bg=SIDE, fg=SIDE_MUTED,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
                      row=0, column=0, sticky="ew", pady=(0, 6))
         shortcuts = (
@@ -259,10 +276,10 @@ class MiraApp(tk.Tk):
                 menu.grab_release()
 
         open_tools = self._button(tools, "☰  Mở tất cả công cụ", show_tools,
-                                  compact=True, background=SURFACE)
+                                  compact=True, background=SIDE_SURFACE, rounded=True)
         open_tools.grid(row=1, column=0, sticky="ew")
 
-        main = tk.Frame(self, bg=BG, padx=20, pady=15)
+        main = tk.Frame(self, bg=BG, padx=23, pady=12)
         main.grid(row=0, column=1, sticky="nsew")
         main.grid_columnconfigure(0, weight=1)
         main.grid_rowconfigure(0, weight=1)
@@ -281,19 +298,19 @@ class MiraApp(tk.Tk):
             width=min(900, max(440, event.width - 20))))
 
         head = tk.Frame(desk, bg=BG)
-        head.grid(row=0, column=0, sticky="ew", pady=(1, 8))
+        head.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         head_top = tk.Frame(head, bg=BG)
         head_top.pack(fill="x")
-        self.avatar = AnimeAvatar(head_top, size=70, bg=BG, style=self.avatar_style,
+        self.avatar = AnimeAvatar(head_top, size=78, bg=BG, style=self.avatar_style,
                                   image_path=self.custom_avatar_path if self.avatar_custom else None,
                                   command=self._avatar_dialog)
         self.avatar.pack(side="left", padx=(0, 14))
         head_actions = tk.Frame(head_top, bg=BG)
         head_actions.pack(side="right", padx=(8, 0))
         self._button(head_actions, "Lịch nhắc", self._reminders_dialog, compact=True,
-                     background=SURFACE).pack(anchor="e", pady=(0, 4))
+                     background=PANEL, rounded=True).pack(anchor="e", pady=(0, 4))
         tk.Checkbutton(head_actions, text="✦ Hoạt bát", variable=self.playful_var,
-                       command=self._toggle_persona, bg=BG, fg=ACCENT, selectcolor=SIDE,
+                       command=self._toggle_persona, bg=BG, fg=ACCENT, selectcolor=PANEL,
                        activebackground=BG, activeforeground=TEXT,
                        font=("Segoe UI", 9), cursor="hand2").pack(anchor="e")
         titles = tk.Frame(head_top, bg=BG)
@@ -312,13 +329,13 @@ class MiraApp(tk.Tk):
             title_label.configure(wraplength=max(120, event.width - 8)),
             folder_label.configure(wraplength=max(120, event.width - 8))))
 
-        presence = tk.Frame(head, bg=SURFACE, padx=11, pady=5,
-                            highlightthickness=1, highlightbackground=BORDER)
+        presence = SoftCard(head, fill=PANEL, backdrop=BG, pad_x=13,
+                            pad_y=7, radius=13, expand_content=True)
         presence.pack(fill="x", pady=(8, 0))
-        tk.Label(presence, textvariable=self.model_var, bg=SURFACE, fg=ACCENT,
+        tk.Label(presence.content, textvariable=self.model_var, bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 9, "bold")).pack(side="right", padx=(9, 0))
-        self.presence_health = tk.Label(presence, textvariable=self.health_var,
-                                        bg=SURFACE, fg=TEXT, anchor="w", justify="left",
+        self.presence_health = tk.Label(presence.content, textvariable=self.health_var,
+                                        bg=PANEL, fg=MUTED, anchor="w", justify="left",
                                         wraplength=400, font=("Segoe UI", 9))
         self.presence_health.pack(side="left", fill="x", expand=True)
         desk.bind("<Configure>", lambda event: self.presence_health.configure(
@@ -345,14 +362,15 @@ class MiraApp(tk.Tk):
         self._pending_label: tk.Label | None = None
         self.starters: tk.Frame | None = None
 
-        composer = tk.Frame(desk, bg=PANEL, padx=15, pady=10,
-                            highlightthickness=1, highlightbackground=BORDER)
-        composer.grid(row=2, column=0, sticky="ew", pady=(8, 5))
-        composer.grid_columnconfigure(0, weight=1)
-        tk.Label(composer, text="NHẮN MIRA", bg=PANEL, fg=ACCENT,
+        composer = SoftCard(desk, fill=PANEL, backdrop=BG, pad_x=15,
+                            pad_y=11, radius=20, expand_content=True)
+        composer.grid(row=2, column=0, sticky="ew", pady=(5, 3))
+        compose_body = composer.content
+        compose_body.grid_columnconfigure(0, weight=1)
+        tk.Label(compose_body, text="NHẮN MIRA", bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 9, "bold"), anchor="w").grid(
                      row=0, column=0, sticky="ew", pady=(0, 4))
-        self.attachment_chip = tk.Frame(composer, bg=SURFACE)
+        self.attachment_chip = tk.Frame(compose_body, bg=SURFACE)
         self.attachment_chip.grid(row=0, column=1, sticky="e", pady=(0, 5))
         tk.Label(self.attachment_chip, textvariable=self.attachment_var, bg=SURFACE,
                  fg=TEXT, font=("Segoe UI", 9), width=18, anchor="w").pack(side="left", padx=(7, 0))
@@ -361,7 +379,7 @@ class MiraApp(tk.Tk):
         self.attachment_chip.grid_remove()
         self.attachment_var.trace_add("write", lambda *_: self.attachment_chip.grid()
                                       if self.attachment_data is not None else self.attachment_chip.grid_remove())
-        self.input = tk.Text(composer, height=2, wrap="word", bg="#141d2e", fg=TEXT,
+        self.input = tk.Text(compose_body, height=2, wrap="word", bg="#f8f7fc", fg=TEXT,
                              insertbackground=ACCENT, relief="flat", borderwidth=0,
                              padx=10, pady=8, font=("Segoe UI", 12), undo=True,
                              highlightthickness=1, highlightbackground=BORDER,
@@ -372,33 +390,34 @@ class MiraApp(tk.Tk):
         self.input.bind("<Shift-Return>", self._newline)
         # Keep Send outside the packed toolbar: at narrow widths its left-hand
         # buttons can consume the entire row and leave Send unmapped.
-        self.send_button = self._button(composer, "Gửi  ↗", self._send,
-                                        primary=True, compact=True)
+        self.send_button = self._button(compose_body, "Gửi  ↗", self._send,
+                                        primary=True, compact=True, rounded=True)
         self.send_button.grid(row=1, column=1, sticky="ns", padx=(8, 0))
-        compose_tools = tk.Frame(composer, bg=PANEL)
+        compose_tools = tk.Frame(compose_body, bg=PANEL)
         compose_tools.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self._button(compose_tools, "＋ Ảnh", self._attach_image, compact=True,
-                     background=PANEL).pack(side="left")
+                     background=PANEL, rounded=True).pack(side="left")
         self.voice_button = self._button(compose_tools, "🎙 Nói", self._start_dictation,
-                                         compact=True, background=PANEL)
+                                         compact=True, background=PANEL, rounded=True)
         self.voice_button.pack(side="left")
         self.screen_button = self._button(compose_tools, "▣ Màn hình", self._attach_screen,
-                                          compact=True, background=PANEL)
+                                          compact=True, background=PANEL, rounded=True)
         self.screen_button.pack(side="left")
         self._button(compose_tools, "✦ Nhận xét", self._comment_on_screen,
-                     compact=True, background=PANEL).pack(side="left")
+                     compact=True, background=PANEL, rounded=True).pack(side="left")
         self._button(compose_tools, "＋ File", self._attach_file, compact=True,
-                     background=PANEL).pack(side="left")
+                     background=PANEL, rounded=True).pack(side="left")
         status = tk.Frame(desk, bg=BG)
         status.grid(row=3, column=0, sticky="ew")
         tk.Label(status, textvariable=self.status_var, bg=BG, fg=MUTED,
                  anchor="w", font=("Segoe UI", 9)).pack(side="left", fill="x", expand=True)
-        self.retry_button = self._button(status, "Thử gửi lại", self._retry, compact=True)
+        self.retry_button = self._button(status, "Thử gửi lại", self._retry,
+                                         compact=True, rounded=True)
         self.listen_button = self._button(status, "🔊 Nghe", self._listen_last, compact=True,
-                                          background=BG)
+                                          background=BG, rounded=True)
         self.listen_button.pack(side="right", padx=(4, 0))
         self.copy_button = self._button(status, "⧉ Sao chép", self._copy_last_answer,
-                                        compact=True, background=BG)
+                                        compact=True, background=BG, rounded=True)
         self.copy_button.pack(side="right")
 
         rail = tk.Frame(main, bg=BG, width=276, padx=8)
@@ -418,58 +437,84 @@ class MiraApp(tk.Tk):
             rail_window, width=event.width))
         tk.Label(rail_body, text="CÔNG CỤ CHO BẠN", bg=BG, fg=ACCENT, anchor="w",
                  font=("Segoe UI", 9, "bold")).pack(fill="x", pady=(8, 14))
-        model_card = tk.Frame(rail_body, bg=PANEL, padx=14, pady=12,
-                              highlightthickness=1, highlightbackground=BORDER)
+        character_card = SoftCard(rail_body, fill=USER_CARD, backdrop=BG,
+                                  pad_x=15, pad_y=16, radius=21, expand_content=True)
+        character_card.pack(fill="x", pady=(0, 12))
+        self.rail_avatar = AnimeAvatar(character_card.content, size=128, bg=USER_CARD,
+                                       style=self.avatar_style,
+                                       image_path=self.custom_avatar_path if self.avatar_custom else None,
+                                       command=self._avatar_dialog)
+        self.rail_avatar.pack(pady=(0, 7))
+        tk.Label(character_card.content, text="MIRA ĐANG Ở ĐÂY", bg=USER_CARD,
+                 fg=ACCENT, font=("Segoe UI", 10, "bold")).pack()
+        tk.Label(character_card.content, text="Bấm vào Mira để đổi nhân vật", bg=USER_CARD,
+                 fg=MUTED, font=("Segoe UI", 9)).pack(pady=(3, 0))
+
+        model_card = SoftCard(rail_body, fill=PANEL, backdrop=BG,
+                              pad_x=14, pad_y=12, radius=17, expand_content=True)
         model_card.pack(fill="x", pady=(0, 12))
-        tk.Label(model_card, text="✦  Mô hình của Mira", bg=PANEL, fg=TEXT,
+        tk.Label(model_card.content, text="✦  Mô hình của Mira", bg=PANEL, fg=TEXT,
                  font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x")
-        tk.Label(model_card, textvariable=self.model_var, bg=PANEL, fg=ACCENT,
+        tk.Label(model_card.content, textvariable=self.model_var, bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 10, "bold"), anchor="w",
                  wraplength=220).pack(fill="x", pady=(8, 8))
-        self.health_label = tk.Label(model_card, textvariable=self.health_var,
+        self.health_label = tk.Label(model_card.content, textvariable=self.health_var,
                                      bg=PANEL, fg=MUTED, justify="left", anchor="w",
                                      wraplength=220, font=("Segoe UI", 9))
         self.health_label.pack(fill="x", pady=(0, 8))
-        self._button(model_card, "Đổi mô hình", self._model_lab_dialog,
-                     compact=True, background=SURFACE).pack(side="left")
-        self._button(model_card, "Kiểm tra", self._check_ollama,
-                     compact=True, background=SURFACE).pack(side="right")
+        self._button(model_card.content, "Đổi mô hình", self._model_lab_dialog,
+                     compact=True, background=SURFACE, rounded=True).pack(side="left")
+        self._button(model_card.content, "Kiểm tra", self._check_ollama,
+                     compact=True, background=SURFACE, rounded=True).pack(side="right")
 
-        actions_card = tk.Frame(rail_body, bg=PANEL, padx=14, pady=12,
-                                highlightthickness=1, highlightbackground=BORDER)
+        actions_card = SoftCard(rail_body, fill=PANEL, backdrop=BG,
+                                pad_x=14, pad_y=12, radius=17, expand_content=True)
         actions_card.pack(fill="x", pady=(0, 12))
-        tk.Label(actions_card, text="Lối tắt", bg=PANEL, fg=TEXT,
+        tk.Label(actions_card.content, text="Lối tắt", bg=PANEL, fg=TEXT,
                  font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x", pady=(0, 10))
         for label, action in (("⌚  Đặt lịch nhắc", self._reminders_dialog),
                               ("♟  Chơi game với Mira", self._game_dialog),
                               ("◈  Chat trên điện thoại", self._mobile_dialog),
                               ("✦  Dạy Mira nhớ", self._show_memories)):
-            self._button(actions_card, label, action, compact=True,
-                         background=SURFACE).pack(fill="x", pady=2)
+            self._button(actions_card.content, label, action, compact=True,
+                         background=SURFACE, rounded=True).pack(fill="x", pady=2)
 
-        work_card = tk.Frame(rail_body, bg=PANEL, padx=14, pady=12,
-                             highlightthickness=1, highlightbackground=BORDER)
+        work_card = SoftCard(rail_body, fill=PANEL, backdrop=BG,
+                             pad_x=14, pad_y=12, radius=17, expand_content=True)
         work_card.pack(fill="x")
-        tk.Label(work_card, text="File & quyền truy cập", bg=PANEL, fg=TEXT,
+        tk.Label(work_card.content, text="File & quyền truy cập", bg=PANEL, fg=TEXT,
                  font=("Segoe UI", 13, "bold"), anchor="w").pack(fill="x", pady=(0, 8))
-        self._button(work_card, "＋ Chọn file", self._attach_file,
-                     compact=True, background=SURFACE).pack(fill="x", pady=3)
-        self._button(work_card, "▶ Chạy kiểm thử", self._run_tests,
-                     compact=True, background=SURFACE).pack(fill="x", pady=3)
-        tk.Checkbutton(work_card, text="🌐 Cho Mira tra cứu web", variable=self.web_var,
-                       command=self._toggle_web, bg=PANEL, fg=TEXT, selectcolor=SIDE,
+        self._button(work_card.content, "＋ Chọn file", self._attach_file,
+                     compact=True, background=SURFACE, rounded=True).pack(fill="x", pady=3)
+        self._button(work_card.content, "▶ Chạy kiểm thử", self._run_tests,
+                     compact=True, background=SURFACE, rounded=True).pack(fill="x", pady=3)
+        tk.Checkbutton(work_card.content, text="🌐 Cho Mira tra cứu web", variable=self.web_var,
+                       command=self._toggle_web, bg=PANEL, fg=TEXT, selectcolor=PANEL,
                        activebackground=PANEL, activeforeground=TEXT,
                        font=("Segoe UI", 10), cursor="hand2").pack(anchor="w", pady=(6, 0))
-        self.desktop_button = self._button(work_card, "🖱 Bật điều khiển máy", self._toggle_desktop,
-                                           compact=True, background=SURFACE)
+        self.desktop_button = self._button(work_card.content, "🖱 Bật điều khiển máy", self._toggle_desktop,
+                                           compact=True, background=SURFACE, rounded=True)
         self.desktop_button.pack(fill="x", pady=(6, 3))
         if sys.platform != "win32":
             self.desktop_button.configure(state="disabled", text="Điều khiển: chỉ Windows")
-        self.device_button = self._button(work_card, "◉ Cho Mira xem trạng thái PC", self._toggle_device,
-                                          compact=True, background=SURFACE)
+        self.device_button = self._button(work_card.content, "◉ Cho Mira xem trạng thái PC", self._toggle_device,
+                                          compact=True, background=SURFACE, rounded=True)
         self.device_button.pack(fill="x", pady=(4, 3))
         if sys.platform != "win32":
             self.device_button.configure(state="disabled", text="Trạng thái PC: chỉ Windows")
+
+        def scroll_rail(event):
+            direction = -1 if getattr(event, "num", None) == 4 or event.delta > 0 else 1
+            rail_canvas.yview_scroll(direction * 3, "units")
+            return "break"
+
+        def bind_rail_scroll(widget):
+            for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                widget.bind(sequence, scroll_rail)
+            for child in widget.winfo_children():
+                bind_rail_scroll(child)
+
+        bind_rail_scroll(rail_canvas)
 
         def resize_main(event):
             if event.widget is main:
@@ -646,6 +691,7 @@ class MiraApp(tk.Tk):
             return
         self.avatar_tick += 1
         self.avatar.set_state(self.avatar_state, self.avatar_tick)
+        self.rail_avatar.set_state(self.avatar_state, self.avatar_tick)
         self.after(280, self._animate_avatar)
 
     def _avatar_dialog(self):
@@ -682,6 +728,7 @@ class MiraApp(tk.Tk):
             self.avatar_style = choices[style.current()]
             self.avatar_custom = False
             self.avatar.configure_avatar(style=self.avatar_style)
+            self.rail_avatar.configure_avatar(style=self.avatar_style)
             preview.configure_avatar(style=self.avatar_style)
             self._save_settings()
 
@@ -705,6 +752,7 @@ class MiraApp(tk.Tk):
                 self.custom_avatar_path.write_bytes(blob)
                 self.avatar_custom = True
                 self.avatar.configure_avatar(image_path=self.custom_avatar_path)
+                self.rail_avatar.configure_avatar(image_path=self.custom_avatar_path)
                 preview.configure_avatar(image_path=self.custom_avatar_path)
                 self._save_settings()
             except (OSError, ValueError, tk.TclError, struct.error) as exc:
@@ -740,21 +788,28 @@ class MiraApp(tk.Tk):
             self._render_welcome()
         if self.busy and self.stream_chat_id == self.active_chat_id:
             self._show_pending(self.name_var.get())
-        self.after_idle(lambda: self.feed_canvas.yview_moveto(
-            1.0 if item["messages"] else 0.0))
+        render_id = self.active_chat_id
+
+        def align_feed():
+            if not self.closed and render_id == self.active_chat_id:
+                self.feed_canvas.yview_moveto(1.0 if item["messages"] else 0.0)
+
+        self.after_idle(align_feed)
+        # Rounded cards settle their canvas sizes after Tk's first layout pass.
+        self.after(80, align_feed)
 
     def _render_welcome(self):
         self.starters = tk.Frame(self.messages_frame, bg=BG)
         self.starters.pack(fill="x", padx=15, pady=(24, 15))
-        intro = tk.Frame(self.starters, bg=PANEL, padx=22, pady=17,
-                         highlightthickness=1, highlightbackground=BORDER)
+        intro = SoftCard(self.starters, fill=PANEL, backdrop=BG,
+                         pad_x=23, pad_y=18, radius=20, expand_content=True)
         intro.pack(fill="x", pady=(0, 17))
-        tk.Label(intro, text="✦  MIRA  /  SẴN SÀNG CÙNG BẠN", bg=PANEL, fg=ACCENT,
+        tk.Label(intro.content, text="✦  MIRA  /  SẴN SÀNG CÙNG BẠN", bg=PANEL, fg=ACCENT,
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 7))
-        tk.Label(intro, text="Hôm nay mình giúp gì cho bạn?", bg=PANEL, fg=TEXT,
+        tk.Label(intro.content, text="Hôm nay mình giúp gì cho bạn?", bg=PANEL, fg=TEXT,
                  font=("Segoe UI", 20, "bold"), anchor="w").pack(fill="x", pady=(0, 5))
         self._welcome_note = tk.Label(
-            intro, text="Hãy nhắn điều bạn đang nghĩ, hoặc chọn một việc để bắt đầu.",
+            intro.content, text="Hãy nhắn điều bạn đang nghĩ, hoặc chọn một việc để bắt đầu.",
             bg=PANEL, fg=MUTED, font=("Segoe UI", 10), anchor="w", justify="left",
             wraplength=550)
         self._welcome_note.pack(fill="x")
@@ -770,22 +825,22 @@ class MiraApp(tk.Tk):
             ("◇  Giải thích cho tôi", "Bắt đầu từ điều cơ bản", "Giải thích thật dễ hiểu cho tôi về: "),
             ("⌘  Hỗ trợ lập trình", "Tìm và sửa lỗi code", "Giúp tôi hiểu và sửa lỗi code này: "),
         )):
-            tile = tk.Frame(choices, bg=PANEL, highlightthickness=1,
-                            highlightbackground=BORDER)
+            tile = SoftCard(choices, fill=PANEL, backdrop=BG, pad_x=8,
+                            pad_y=5, radius=15, expand_content=True)
             tile.grid(row=index // 2, column=index % 2, sticky="ew",
                       padx=(0, 9) if index % 2 == 0 else (0, 0), pady=(0, 9))
-            button = tk.Button(tile, text=title + "   ↗",
+            button = tk.Button(tile.content, text=title + "   ↗",
                                command=lambda value=prompt: self._fill_prompt(value),
                                bg=PANEL, fg=TEXT, activebackground=SURFACE,
                                activeforeground=TEXT, relief="flat", borderwidth=0,
                                font=("Segoe UI", 10, "bold"), anchor="w",
                                padx=15, pady=9, cursor="hand2")
             button.pack(fill="x")
-            note = tk.Label(tile, text=hint, bg=PANEL, fg=MUTED, anchor="w",
+            note = tk.Label(tile.content, text=hint, bg=PANEL, fg=MUTED, anchor="w",
                             font=("Segoe UI", 9), padx=16, pady=1, cursor="hand2")
             note.pack(fill="x", pady=(0, 9))
             note.bind("<Button-1>", lambda _, value=prompt: self._fill_prompt(value))
-            for widget in (tile, button, note):
+            for widget in (tile, tile.content, button, note):
                 self._bind_feed_scroll(widget)
 
     def _resize_feed(self, event):
@@ -814,12 +869,11 @@ class MiraApp(tk.Tk):
         row = tk.Frame(self.messages_frame, bg=BG)
         row.pack(fill="x", padx=9, pady=6)
         color = USER_CARD if user else MIRA_CARD
-        card = tk.Frame(row, bg=color, padx=17, pady=11,
-                        highlightthickness=1,
-                        highlightbackground="#514d79" if user else BORDER)
+        card = SoftCard(row, fill=color, backdrop=BG,
+                        pad_x=18, pad_y=12, radius=18)
         card.pack(side="right" if user else "left",
                   padx=(42, 9) if user else (9, 42))
-        heading = tk.Frame(card, bg=color)
+        heading = tk.Frame(card.content, bg=color)
         heading.pack(fill="x", pady=(0, 8))
         tk.Label(heading, text=("↗  " if user else "✦  ") + sender,
                  bg=color, fg=ACCENT if user else BLUE,
@@ -829,13 +883,13 @@ class MiraApp(tk.Tk):
                          activeforeground=TEXT, font=("Segoe UI", 9), cursor="hand2",
                          command=lambda value=content: self._copy_message(value))
         copy.pack(side="right", padx=(20, 0))
-        body = tk.Label(card, text=content, bg=color, fg=TEXT,
+        body = tk.Label(card.content, text=content, bg=color, fg=TEXT,
                         font=("Segoe UI", 11), justify="left", anchor="w",
                         wraplength=650)
         body.pack(anchor="w")
         copy.configure(command=lambda widget=body: self._copy_message(widget.cget("text")))
         self._message_labels.append(body)
-        for widget in (row, card, heading, body, copy):
+        for widget in (row, card, card.content, heading, body, copy):
             self._bind_feed_scroll(widget)
         return row, body
 
@@ -1041,7 +1095,7 @@ class MiraApp(tk.Tk):
         tk.Label(dialog, text="Mira dùng các ghi nhớ này khi chat. Bạn có thể thêm hoặc quên từng mục.",
                  bg=BG, fg=MUTED).pack(anchor="w", padx=18)
         box = tk.Listbox(dialog, font=("Segoe UI", 11), bg=PANEL, fg=TEXT,
-                         selectbackground="#325976", relief="flat", activestyle="none")
+                         selectbackground="#d9d0f7", relief="flat", activestyle="none")
         box.pack(fill="both", expand=True, padx=18, pady=13)
         ids: list[str] = []
 
@@ -1342,7 +1396,7 @@ class MiraApp(tk.Tk):
             "https://remotedesktop.google.com/access")).pack(side="left", padx=7)
         tk.Label(dialog, text="Điều khiển chuột/bàn phím từ điện thoại cần cài Chrome "
                  "Remote Desktop trên máy tính. Máy phải bật và không ngủ.",
-                 bg=BG, fg="#ffc59f", wraplength=625, justify="left").pack(
+                 bg=BG, fg=WARNING, wraplength=625, justify="left").pack(
                      anchor="w", padx=20, pady=(12, 0))
         if self.phone_server:
             code.set(self.phone_server.new_pairing_code())
@@ -1500,7 +1554,7 @@ class MiraApp(tk.Tk):
         tk.Label(dialog, textvariable=status, bg=BG, fg=MUTED, wraplength=600,
                  justify="left").pack(anchor="w", padx=20)
         listing = tk.Listbox(dialog, font=("Segoe UI", 10), bg=PANEL, fg=TEXT,
-                             selectbackground="#325976", relief="flat", activestyle="none")
+                             selectbackground="#d9d0f7", relief="flat", activestyle="none")
         listing.pack(fill="both", expand=True, padx=20, pady=11)
         ids = []
 
@@ -2015,7 +2069,7 @@ class MiraApp(tk.Tk):
         self._button(dialog, "Thu hồi đồng ý gửi lên cloud", revoke).pack(anchor="w", padx=20)
         tk.Label(dialog, text="Free có hạn mức và có thể hết lượt; nếu tài khoản đã mua credit, "
                  "hãy kiểm tra cách Ollama sử dụng credit. Mira không tự nạp tiền.",
-                 bg=BG, fg="#ffc59f", wraplength=630, justify="left").pack(
+                 bg=BG, fg=WARNING, wraplength=630, justify="left").pack(
                      anchor="w", padx=20, pady=(10, 2))
         links = tk.Frame(dialog, bg=BG)
         links.pack(fill="x", padx=20)
@@ -2199,16 +2253,16 @@ class MiraApp(tk.Tk):
                     on_done(models)
                 if error:
                     self.health_var.set("●  " + error)
-                    self.health_label.configure(fg="#ffc59f")
+                    self.health_label.configure(fg=WARNING)
                 elif not models:
                     self.health_var.set("●  Chưa có mô hình • xem Cách cài hoặc AI cloud cho máy yếu.")
-                    self.health_label.configure(fg="#ffc59f")
+                    self.health_label.configure(fg=WARNING)
                 elif self.model_var.get() not in models:
                     if is_cloud_model(self.model_var.get()):
                         self.health_var.set("●  Chưa có mô hình cloud • đăng nhập, đăng ký rồi Kiểm tra lại.")
                     else:
                         self.health_var.set(f"●  Chưa có {self.model_var.get()} • hãy tải hoặc chọn mô hình đã cài.")
-                    self.health_label.configure(fg="#ffc59f")
+                    self.health_label.configure(fg=WARNING)
                 else:
                     if is_cloud_model(self.model_var.get()):
                         detail = "Free có hạn mức" if self.cloud_consent else "chờ bạn đồng ý trước khi gửi"

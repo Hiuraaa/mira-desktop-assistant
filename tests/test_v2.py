@@ -52,6 +52,33 @@ class ConversationTests(unittest.TestCase):
 
 
 class VisibleComposerTests(unittest.TestCase):
+    def test_rounded_button_obeys_disabled_state(self):
+        if tk is None:
+            self.skipTest("Tkinter chưa có trong môi trường CI.")
+        try:
+            from mira.ui_widgets import SoftButton
+            root = tk.Tk()
+        except tk.TclError as exc:
+            if "display" in str(exc).lower() or "screen" in str(exc).lower():
+                self.skipTest("Môi trường không có màn hình Tkinter: " + str(exc))
+            raise
+        try:
+            calls = []
+            button = SoftButton(root, "Gửi", lambda: calls.append("sent"), fill="#6548cd",
+                                hover="#5335b5", foreground="#ffffff", backdrop="#f6f4fa")
+            button.pack()
+            root.update()
+            button.invoke()
+            button.configure(state="disabled", text="Gửi tin")
+            button.invoke()
+            self.assertEqual(calls, ["sent"])
+            self.assertEqual(button.cget("text"), "Gửi tin")
+            button.configure(state="normal")
+            button.invoke()
+            self.assertEqual(calls, ["sent", "sent"])
+        finally:
+            root.destroy()
+
     def test_chat_input_and_send_button_fit_in_window(self):
         if tk is None:
             self.skipTest("Tkinter chưa có trong môi trường CI.")
