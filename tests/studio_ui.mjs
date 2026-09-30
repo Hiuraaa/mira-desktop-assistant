@@ -108,6 +108,7 @@ try {
   await page.waitForFunction(() => !document.querySelector('#settings-form button[type="submit"]').disabled);
   await page.waitForFunction(() => document.body.dataset.theme === 'light');
   await page.locator('#new-chat').click();
+  await page.locator('#view-chat.active #send-btn').waitFor({state:'visible'});
 
   for (const [width,height,name] of [[900,700,'laptop'],[430,850,'compact']]) {
     await page.setViewportSize({width,height});
