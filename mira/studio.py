@@ -445,6 +445,9 @@ class DesktopStudio:
         elif operation == "example_add":
             app.preferences.add_example(self._text(data, "tags", 500), self._text(data, "request", 500),
                                          self._text(data, "answer", 500))
+        elif operation == "voice_auto":
+            app._set_voice_auto(data.get("enabled"))
+            return {"ok": True, "enabled": app.voice_auto_var.get()}
         elif operation == "settings":
             if app.busy:
                 raise ValueError("Hãy đợi Mira trả lời xong rồi đổi cài đặt.")
@@ -461,8 +464,7 @@ class DesktopStudio:
             app.fast_var.set(data["fast"])
             app.deep_var.set(data["deep"])
             app.playful_var.set(data["playful"])
-            app.voice_auto_var.set(data["voice_auto"])
-            app._save_settings()
+            app._set_voice_auto(data["voice_auto"])
             self.settings = {"theme": theme}
             save_json(self.settings_path, self.settings)
             app._check_ollama()
@@ -480,7 +482,6 @@ class DesktopStudio:
                 raise ValueError("Hãy đợi Mira trả lời xong.")
             app.speaker.stop()
             start_windows_dictation()
-            app.voice_input_used = True
         else:
             raise ValueError("Mira không hỗ trợ lệnh này.")
         return {"ok": True}

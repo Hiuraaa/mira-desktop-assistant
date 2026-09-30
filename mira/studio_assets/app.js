@@ -8,6 +8,7 @@ const titles = {chat:"Trò chuyện", memory:"Bộ nhớ", study:"Học tập", 
 let state = null, csrf = "", view = "chat", polling = false, sending = false;
 let feedSignature = "", memorySignature = "", studySignature = "", toolsSignature = "";
 let modalSubmit = null, stopped = false, lastPoll = 0, lastActivity = 0;
+let voiceSaving = false;
 const drafts = new Map();
 
 function toast(message, error = false) {
@@ -225,7 +226,7 @@ function renderTools(force = false) {
 function renderSettings() {
   const c = state.config;
   const toggle = (key,title,note) => `<div class="toggle-setting"><div><strong>${title}</strong><p>${note}</p></div><label class="toggle"><input type="checkbox" name="${key}" ${c[key] ? "checked" : ""} aria-label="${title}"></label></div>`;
-  $("#view-settings").innerHTML = `<form class="page-content" id="settings-form"><div class="page-heading"><div><span class="eyebrow">THEO CÁCH BẠN THÍCH</span><h1>Một Mira dành cho bạn.</h1><p>Chọn giọng điệu, mô hình và giao diện. Mô hình cloud vẫn cần bạn đồng ý trước khi gửi dữ liệu.</p></div></div><div class="settings-grid"><section class="settings-card"><h2>Mô hình & cá tính</h2><p>Thay đổi cách Mira trò chuyện với bạn.</p>${field("Tên trợ lý","name",state.name,40)}<div class="field"><label for="settings-model">Mô hình Ollama</label><div class="settings-model-row"><input id="settings-model" name="model" list="model-list" maxlength="100" value="${esc(c.model)}" required><button type="button" class="icon-btn" data-tool="check" aria-label="Kiểm tra mô hình">${icon("refresh")}</button></div><datalist id="model-list">${state.models.map(m => `<option value="${esc(m)}"></option>`).join("")}</datalist><small>${esc(state.health)}</small></div><div class="field"><label for="persona-note">Cách bạn muốn Mira nói chuyện</label><textarea id="persona-note" name="persona_note" rows="4" maxlength="400" placeholder="Ví dụ: Xưng em–anh, nói ngắn gọn, vui vẻ; khi không biết thì nói thật.">${esc(c.persona_note)}</textarea><small>Những ví dụ cụ thể trong trang Bộ nhớ sẽ giúp Mira hiểu sở thích của bạn hơn.</small></div><div class="inline-links"><button type="button" class="btn secondary" data-tool="models">${icon("grid")}Mô hình & tốc độ</button><button type="button" class="btn secondary" data-tool="cloud">${icon("cloud")}AI cloud</button></div></section><section class="settings-card"><h2>Trải nghiệm của bạn</h2><p>Điều chỉnh để hợp với nhịp làm việc.</p>${toggle("playful","Mira hoạt bát","Tự nhiên, có cá tính và đùa nhẹ khi phù hợp.")}${toggle("fast","Ưu tiên tốc độ","Dùng ngữ cảnh và câu trả lời gọn hơn.")}${toggle("deep","Suy luận sâu","Dành thêm thời gian cho yêu cầu phức tạp.")}${toggle("voice_auto","Tự đọc câu trả lời","Dùng giọng đã cài trên Windows.")}<hr class="section-divider"><div class="field"><label for="theme-choice">Giao diện</label><select id="theme-choice" name="theme"><option value="light" ${c.theme === "light" ? "selected" : ""}>Sáng · nhẹ nhàng</option><option value="dark" ${c.theme === "dark" ? "selected" : ""}>Tối · yên tĩnh</option></select></div><div class="info-note">${icon("shield")}<span>Quyền điều khiển và đọc trạng thái máy hết khi đóng app. Các công cụ nằm trong trang Công cụ.</span></div></section></div><div class="settings-actions"><button type="button" class="btn secondary" data-action="quit">Đóng Mira</button><button type="submit" class="btn primary">${icon("check")}Lưu cài đặt</button></div><p class="local-note">Mira Studio 3 · Giao diện chạy trên máy này bằng Edge/Chrome, không cần gói giao diện trả phí. Lịch sử chat và bộ nhớ cũ được giữ trong thư mục dữ liệu Mira của bạn.</p></form>`;
+  $("#view-settings").innerHTML = `<form class="page-content" id="settings-form"><div class="page-heading"><div><span class="eyebrow">THEO CÁCH BẠN THÍCH</span><h1>Một Mira dành cho bạn.</h1><p>Chọn giọng điệu, mô hình và giao diện. Mô hình cloud vẫn cần bạn đồng ý trước khi gửi dữ liệu.</p></div></div><div class="settings-grid"><section class="settings-card"><h2>Mô hình & cá tính</h2><p>Thay đổi cách Mira trò chuyện với bạn.</p>${field("Tên trợ lý","name",state.name,40)}<div class="field"><label for="settings-model">Mô hình Ollama</label><div class="settings-model-row"><input id="settings-model" name="model" list="model-list" maxlength="100" value="${esc(c.model)}" required><button type="button" class="icon-btn" data-tool="check" aria-label="Kiểm tra mô hình">${icon("refresh")}</button></div><datalist id="model-list">${state.models.map(m => `<option value="${esc(m)}"></option>`).join("")}</datalist><small>${esc(state.health)}</small></div><div class="field"><label for="persona-note">Cách bạn muốn Mira nói chuyện</label><textarea id="persona-note" name="persona_note" rows="4" maxlength="400" placeholder="Ví dụ: Xưng em–anh, nói ngắn gọn, vui vẻ; khi không biết thì nói thật.">${esc(c.persona_note)}</textarea><small>Những ví dụ cụ thể trong trang Bộ nhớ sẽ giúp Mira hiểu sở thích của bạn hơn.</small></div><div class="inline-links"><button type="button" class="btn secondary" data-tool="models">${icon("grid")}Mô hình & tốc độ</button><button type="button" class="btn secondary" data-tool="cloud">${icon("cloud")}AI cloud</button></div></section><section class="settings-card"><h2>Trải nghiệm của bạn</h2><p>Điều chỉnh để hợp với nhịp làm việc.</p>${toggle("playful","Mira hoạt bát","Tự nhiên, có cá tính và đùa nhẹ khi phù hợp.")}${toggle("fast","Ưu tiên tốc độ","Dùng ngữ cảnh và câu trả lời gọn hơn.")}${toggle("deep","Suy luận sâu","Dành thêm thời gian cho yêu cầu phức tạp.")}${toggle("voice_auto","Tự đọc câu trả lời","Áp dụng và lưu ngay. Mic chỉ dùng để nhập; bấm Nghe để đọc một lần.")}<hr class="section-divider"><div class="field"><label for="theme-choice">Giao diện</label><select id="theme-choice" name="theme"><option value="light" ${c.theme === "light" ? "selected" : ""}>Sáng · nhẹ nhàng</option><option value="dark" ${c.theme === "dark" ? "selected" : ""}>Tối · yên tĩnh</option></select></div><div class="info-note">${icon("shield")}<span>Quyền điều khiển và đọc trạng thái máy hết khi đóng app. Các công cụ nằm trong trang Công cụ.</span></div></section></div><div class="settings-actions"><button type="button" class="btn secondary" data-action="quit">Đóng Mira</button><button type="submit" class="btn primary">${icon("check")}Lưu cài đặt</button></div><p class="local-note">Mira Studio 3 · Giao diện chạy trên máy này bằng Edge/Chrome, không cần gói giao diện trả phí. Lịch sử chat và bộ nhớ cũ được giữ trong thư mục dữ liệu Mira của bạn.</p></form>`;
 }
 
 function showView(next) {
@@ -273,6 +274,8 @@ function render(next) {
   if (view === "tools") renderTools();
   // Never replace a settings form while the user is editing it.
   if (!previous && view === "settings") renderSettings();
+  const voiceToggle = $('#settings-form input[name="voice_auto"]');
+  if (voiceToggle && !voiceSaving) voiceToggle.checked = state.config.voice_auto;
   $("#startup").hidden = true;
 }
 
@@ -401,6 +404,30 @@ document.addEventListener("click", async event => {
 });
 
 document.addEventListener("change",async event => {
+  if (event.target.matches('#settings-form input[name="voice_auto"]')) {
+    const control = event.target, save = $('#settings-form button[type="submit"]');
+    voiceSaving = true;
+    control.disabled = true;
+    save.disabled = true;
+    try {
+      const result = await request("/api/command",{operation:"voice_auto",data:{enabled:control.checked}});
+      control.checked = result.enabled;
+      state.config.voice_auto = result.enabled;
+      toast(result.enabled ? "Đã bật và lưu tự đọc câu trả lời." : "Đã tắt giọng đọc và lưu cài đặt.");
+    } catch(error) {
+      // A failed disk write can still mute the current session. Read the actual
+      // state rather than leaving a switch that disagrees with the backend.
+      try { render(await request("/api/state")); } catch {}
+      control.checked = state.config.voice_auto;
+      toast(error.message,true);
+    } finally {
+      voiceSaving = false;
+      control.disabled = false;
+      save.disabled = false;
+      await poll();
+    }
+    return;
+  }
   try {
     if (event.target.id === "auto-study" || event.target.id === "study-interval") {
       await command("study_config",{auto:$("#auto-study").checked,interval:Number($("#study-interval").value)});
@@ -412,12 +439,15 @@ document.addEventListener("change",async event => {
 document.addEventListener("submit", async event => {
   if (event.target.id !== "settings-form") return;
   event.preventDefault();
+  if (voiceSaving) return;
   const form = event.target, values = Object.fromEntries(new FormData(form));
   for (const name of ["fast","deep","playful","voice_auto"]) values[name] = form.elements[name].checked;
-  const save = $('button[type="submit"]',form); save.disabled = true;
+  const save = $('button[type="submit"]',form), voiceToggle = form.elements.voice_auto;
+  save.disabled = true;
+  voiceToggle.disabled = true;
   try { await command("settings",values); toast("Đã lưu cài đặt của bạn."); }
   catch(error) { toast(error.message,true); }
-  finally { save.disabled = false; }
+  finally { save.disabled = false; voiceToggle.disabled = false; }
 });
 
 $("#chat-form").addEventListener("submit",sendMessage);

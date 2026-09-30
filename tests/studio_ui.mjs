@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
@@ -48,6 +48,76 @@ try {
   };
   await noOverflow();
   await capture('desktop');
+
+  // Verify the real UI switch, backend setting and reply completion agree.
+  // The fixture records TTS requests and never plays sound or opens Win+H.
+  const audio = async () => JSON.parse(await readFile(join(directory,'test-audio.json'),'utf8'));
+  const settings = async () => JSON.parse(await readFile(join(directory,'settings.json'),'utf8'));
+  const settingsView = () => page.locator('[data-view="settings"].nav-item').click();
+  const chatView = () => page.locator('.primary-nav [data-view="chat"]').click();
+  const voiceSwitch = page.locator('#settings-form input[name="voice_auto"]');
+  const voiceSaved = async enabled => {
+    await page.waitForFunction(() => !document.querySelector('#settings-form input[name="voice_auto"]').disabled);
+    await page.waitForFunction(async expected => {
+      const state = await (await fetch('/api/state',{cache:'no-store'})).json();
+      return state.config.voice_auto === expected;
+    },enabled);
+    assert.equal((await settings()).voice_auto,enabled);
+  };
+  const replyDone = () => page.waitForFunction(() => !document.querySelector('#send-btn').disabled);
+  await page.locator('#dictate').click();
+  await page.locator('#message-input').fill('Chào Mira, mình vừa dùng mic.');
+  await page.locator('#message-input').press('Enter');
+  await replyDone();
+  assert.equal((await audio()).dictations,1);
+  assert.equal((await audio()).calls.length,0,'Dictation bypassed the muted voice setting');
+
+  await settingsView();
+  await page.locator('[name="persona_note"]').fill('Bản nháp phải được giữ khi đổi giọng đọc.');
+  await voiceSwitch.check();
+  await voiceSaved(true);
+  assert.equal(await page.locator('[name="persona_note"]').inputValue(),'Bản nháp phải được giữ khi đổi giọng đọc.');
+  assert.equal((await settings()).persona_note,'','Voice switch saved an unrelated settings draft');
+  await chatView();
+  await page.locator('#message-input').fill('Giờ hãy trả lời bằng giọng đã bật.');
+  await page.locator('#message-input').press('Enter');
+  await replyDone();
+  assert.equal((await audio()).calls.length,1);
+  assert.equal((await audio()).active,true);
+  await settingsView();
+  await voiceSwitch.uncheck();
+  await voiceSaved(false);
+  assert.equal((await audio()).active,false,'Muting did not stop the active playback');
+
+  await voiceSwitch.check();
+  await voiceSaved(true);
+  await chatView();
+  await page.locator('#message-input').fill('Kiểm tra giọng đọc khi đang chờ.');
+  await page.locator('#message-input').press('Enter');
+  await page.waitForFunction(() => document.querySelector('#send-btn').disabled);
+  await settingsView();
+  await voiceSwitch.uncheck();
+  await voiceSaved(false);
+  await writeFile(join(directory,'release-voice-test'),'continue');
+  await replyDone();
+  assert.equal((await audio()).calls.length,1,'A pending reply spoke after the user muted it');
+  await page.reload();
+  await page.locator('#startup').waitFor({state:'hidden'});
+  await settingsView();
+  assert.equal(await voiceSwitch.isChecked(),false,'Reload showed a different voice setting');
+  await chatView();
+  const listenOnce = async () => {
+    await Promise.all([
+      page.waitForResponse(response => response.url().endsWith('/api/command') &&
+        response.request().postDataJSON()?.data?.name === 'listen' && response.ok()),
+      page.locator('[data-tool="listen"]').last().click()
+    ]);
+  };
+  await listenOnce();
+  assert.equal((await audio()).calls.length,2,'Explicit manual Listen stopped working');
+  await listenOnce();
+  assert.equal((await audio()).active,false);
+  await page.locator('#new-chat').click();
 
   await page.locator('#message-input').fill('Tôi thích trả lời tự nhiên, ngắn gọn.');
   await page.locator('#message-input').press('Enter');
@@ -134,7 +204,7 @@ try {
   }
   assert.deepEqual(errors,[],'Browser exceptions');
   assert(!/Traceback|Exception in Tkinter callback/.test(diagnostics),diagnostics);
-  console.log('Studio UI passed: desktop/laptop/compact layout, streaming chat, reviewed memory, source retrieval, feedback, session reload, themes and HTML escaping.');
+  console.log('Studio UI passed: voice switch saves immediately, dictation respects mute, active/pending speech stops, reload and manual Listen; desktop/laptop/compact layout, streaming chat, reviewed memory, source retrieval, feedback, themes and HTML escaping.');
 } finally {
   if(browser) await browser.close();
   child.kill();
