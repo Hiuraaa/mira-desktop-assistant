@@ -21,7 +21,10 @@ def open_preference_dialog(parent: tk.Tk, store: PreferenceStore, button):
     dialog.geometry("780x540")
     dialog.minsize(650, 440)
     dialog.configure(bg=BG)
-    dialog.transient(parent)
+    if hasattr(parent, "_present_dialog"):
+        parent._present_dialog(dialog)
+    else:
+        dialog.transient(parent)
     tk.Label(dialog, text="Bộ dữ liệu sở thích", bg=BG, fg=TEXT,
              font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(16, 4))
     tk.Label(dialog, text="Các quy tắc và ví dụ được lưu trên máy. Mira chọn ví dụ liên quan đến câu hỏi để trả lời hợp ý bạn.",

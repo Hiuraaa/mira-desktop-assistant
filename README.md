@@ -2,6 +2,26 @@
 
 Mira là ứng dụng desktop dành cho Windows, trò chuyện bằng tiếng Việt qua Ollama. Bạn có thể dùng mô hình trên máy hoặc chọn mô hình Ollama Cloud cho máy yếu. Mira giúp giải thích, viết code, tìm/đọc file, kiểm tra cú pháp Python và đề xuất sửa file trong thư mục bạn chọn. Tên gọi và cách xưng hô của Mira có thể chỉnh trong **Mô hình & cài đặt**.
 
+## Mira Studio 3 — giao diện PC mới và học từ điều bạn chọn
+
+Mở `start_windows.bat` hoặc `python run_mira.py` để dùng giao diện Studio: khung chat mới, nhân vật 2D nhỏ, lịch sử tìm kiếm được, Markdown/code dễ đọc, chế độ sáng/tối và các trang **Bộ nhớ**, **Học tập**, **Công cụ**, **Cài đặt**. Studio dùng Edge/Chrome có sẵn làm cửa sổ app, kết nối với Python qua cổng ngẫu nhiên chỉ trên `127.0.0.1`. Không cần cài Node, mua UI hay tải model mới cho giao diện. Edge/Chrome vẫn dùng một phần RAM; nếu muốn giao diện Python cũ, chạy `start_windows.bat --classic` hoặc `python run_mira.py --classic`.
+
+Lịch sử và bộ nhớ cũ vẫn dùng thư mục dữ liệu Mira hiện tại (mặc định `%LOCALAPPDATA%\Mira` trên Windows). Không thay thư mục này khi nâng cấp. Tắt Mira cũ trước khi mở bản mới để tránh hai phiên cùng ghi dữ liệu. Các công cụ điện thoại, Telegram, game, chụp màn hình và quyền máy tính nằm trong **Công cụ**; một số thiết lập nâng cao tiếp tục mở hộp thoại Windows. Đây là giao diện PC mới, trang web điện thoại hiện có tiếp tục hoạt động như trước.
+
+### Khi bạn không rảnh chat với Mira
+
+1. Mở **Học tập** → **Thêm tài liệu**, đặt tên rồi dán ghi chú về dự án, sở thích hoặc kiến thức muốn Mira biết. Hoặc chọn **Nhập .txt / .md** để thêm một file văn bản UTF-8. Chỉ các tài liệu bạn chọn được đưa vào kho học; mỗi nguồn tối đa 32.000 ký tự, tối đa 40 nguồn.
+2. Nhấn **Ôn một nguồn ngay** để kiểm tra. Nguồn chuyển sang **Sẵn sàng**, báo cáo hiện ở dưới. Mira chia nguồn thành các đoạn ngắn và sẽ đưa những đoạn liên quan vào câu hỏi sau này. Hỏi một câu có từ khóa hoặc tên nguồn, ví dụ “Trong dự án Cobalt, robot cần sạc khi nào?”.
+3. Bật **Tự ôn khi rảnh**, chọn khoảng cách 1/5/15/30 phút. Giữ Mira mở hoặc thu nhỏ, giữ laptop bật và không ngủ. Sau ít nhất một phút không thao tác, nếu Mira không đang trả lời, app chuẩn bị một nguồn chờ; khi đã hết nguồn chờ, app lần lượt ôn lại và cập nhật báo cáo. Đóng app, tắt máy hoặc để máy ngủ thì việc này dừng; các nguồn vẫn được lưu để tiếp tục lần sau.
+4. Khi quay lại, xem **Báo cáo gần đây** và **Bộ nhớ**. Những câu bạn tự nói như “Tôi thích…” hoặc “Nhớ rằng…” được đề xuất làm ký ức, chưa tự biến thành sự thật. Chọn **Xem & lưu** để sửa/lưu, hoặc **Bỏ qua**. Bạn có thể xóa ký ức và nguồn bất cứ lúc nào.
+5. Dưới một câu trả lời, nhấn trái tim hoặc **Dạy cách trả lời**, thêm từ khóa và sửa câu thành cách bạn thích. Mira dùng các ví dụ phù hợp trong những lần chat sau. Đây là cách cải thiện giọng điệu thực tế, bên cạnh phần tính cách trong **Cài đặt**.
+
+**Miễn phí ở bước chuẩn bị:** việc chia tài liệu, lưu ký ức và lập báo cáo chạy trên máy, không gọi LLM/API hay tự mở web. Báo cáo gồm trích đoạn, không phải bài tổng hợp do AI viết. Câu trả lời khi chat vẫn dùng model bạn chọn: model cục bộ cần tài nguyên máy, model cloud vẫn theo hạn mức nhà cung cấp. Nếu dùng cloud và đã đồng ý, ký ức/tài liệu liên quan có thể đi kèm câu hỏi lên dịch vụ đó.
+
+Cách học này là **bộ nhớ + tra cứu tài liệu + ví dụ phản hồi**, không phải tự huấn luyện lại trọng số model. Đọc đi đọc lại không tự làm model thông minh hơn; chất lượng nguồn, cách bạn sửa câu trả lời và mô hình nền vẫn quyết định chất lượng. Mira không tự thu thập toàn bộ PC, xem màn hình liên tục hoặc nạp thông tin ngẫu nhiên từ Internet trong lúc bạn bận.
+
+Studio có cookie HttpOnly, kiểm tra địa chỉ/Origin và CSRF cho các thao tác. Không đưa cổng Studio ra Tailscale/Internet; dùng công cụ ghép nối điện thoại riêng đã có. Đóng cửa sổ Studio sẽ dừng backend sau khoảng 10 giây; tải lại trang trong lúc đó giữ phiên hoạt động. Quyền điều khiển máy vẫn cần cấp theo phiên và duyệt từng hành động.
+
 ## Chạy Mira trên Windows
 
 1. Cài [Python 3.11+](https://www.python.org/downloads/) và chọn **Add python.exe to PATH** trong trình cài đặt.
