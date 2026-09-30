@@ -36,13 +36,18 @@ try {
   await page.locator('#startup').waitFor({state:'hidden'});
   await page.locator('#connection-title').getByText('Mira đã kết nối').waitFor();
   const noOverflow = async () => {
+    await page.waitForFunction(() => innerWidth >= 670 || document.querySelector('.sidebar').getBoundingClientRect().right <= 1);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),'Horizontal overflow');
     const box = await page.locator('#send-btn').boundingBox();
     const viewport = page.viewportSize();
     assert(box && box.x >= 0 && box.x + box.width <= viewport.width && box.y+box.height <= viewport.height,'Send button outside viewport');
   };
+  const capture = async name => {
+    await page.waitForFunction(() => !document.querySelector('#toasts .toast'));
+    await page.screenshot({path:join(output,`mira-studio-${name}.png`),animations:'disabled'});
+  };
   await noOverflow();
-  await page.screenshot({path:join(output,'mira-studio-desktop.png')});
+  await capture('desktop');
 
   await page.locator('#message-input').fill('Tôi thích trả lời tự nhiên, ngắn gọn.');
   await page.locator('#message-input').press('Enter');
@@ -56,7 +61,7 @@ try {
   await page.locator('#modal').waitFor({state:'hidden'});
   await page.locator('.memory-card:not(.candidate)').getByText('Tôi thích câu trả lời tự nhiên và đủ ý.',{exact:true}).waitFor();
   assert.equal(await page.locator('.candidate').count(),0);
-  await page.screenshot({path:join(output,'mira-studio-memory.png')});
+  await capture('memory');
 
   await page.locator('.primary-nav [data-view="study"]').click();
   await page.locator('[data-action="source-add"]').click();
@@ -70,14 +75,14 @@ try {
   await page.locator('#auto-study').check();
   await page.locator('#study-interval').selectOption('15');
   await page.locator('.busy-banner h2').getByText('Tự ôn đang bật').waitFor();
-  await page.screenshot({path:join(output,'mira-studio-study.png')});
+  await capture('study');
 
   await page.locator('.primary-nav [data-view="chat"]').click();
   await page.locator('#message-input').fill('Cobalt dùng ngôn ngữ gì và cần sạc lúc nào?');
   await page.locator('#message-input').press('Enter');
   await page.locator('.assistant .message-content').getByText('Theo nguồn Dự án Cobalt',{exact:false}).waitFor();
   await page.waitForFunction(() => !document.querySelector('#send-btn').disabled);
-  await page.screenshot({path:join(output,'mira-studio-chat.png')});
+  await capture('chat');
   await page.locator('[data-feedback]').last().click();
   await page.locator('#f-tags').fill('Cobalt, robot');
   await page.locator('#modal-save').click();
@@ -86,6 +91,8 @@ try {
   // Untrusted messages must remain text, with no scripts or image event handlers.
   await page.locator('#message-input').fill('<img src=x onerror="window.MIRA_XSS=true"><script>window.MIRA_XSS=true</script>');
   await page.locator('#message-input').press('Enter');
+  await page.locator('.user .message-content').getByText('<img src=x onerror="window.MIRA_XSS=true"><script>window.MIRA_XSS=true</script>',{exact:true}).waitFor();
+  await page.locator('.assistant .message-content').getByText('Bạn đang muốn ưu tiên điều gì?',{exact:true}).waitFor();
   await page.waitForFunction(() => !document.querySelector('#send-btn').disabled);
   assert.equal(await page.evaluate(() => window.MIRA_XSS),undefined);
   assert.equal(await page.locator('.message-content script,.message-content img').count(),0);
@@ -101,7 +108,9 @@ try {
   await page.waitForFunction(() => !document.querySelector('#settings-form button[type="submit"]').disabled);
   await page.waitForFunction(() => document.body.dataset.theme === 'dark');
   await page.locator('.primary-nav [data-view="chat"]').click();
-  await page.screenshot({path:join(output,'mira-studio-dark.png')});
+  await page.locator('#view-chat.active .assistant .message-content').getByText('Theo nguồn Dự án Cobalt',{exact:false}).waitFor();
+  await noOverflow();
+  await capture('dark');
   await page.locator('[data-view="settings"].nav-item').click();
   await page.locator('#theme-choice').selectOption('light');
   await page.locator('#settings-form button[type="submit"]').click();
@@ -113,7 +122,7 @@ try {
   for (const [width,height,name] of [[900,700,'laptop'],[430,850,'compact']]) {
     await page.setViewportSize({width,height});
     await noOverflow();
-    await page.screenshot({path:join(output,`mira-studio-${name}.png`)});
+    await capture(name);
     if(width < 670) {
       await page.locator('#menu-toggle').click();
       await page.locator('.primary-nav [data-view="study"]').click();
