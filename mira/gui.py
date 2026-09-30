@@ -93,7 +93,6 @@ class MiraApp(tk.Tk):
         self.telegram_token: str | None = None
         self.telegram_credentials_path = self.path / "telegram_credentials.json"
         self.speaker = SpeechPlayer()
-        self.voice_input_used = False
         self.game_bridge: GameBridge | None = None
         self.game_react_var = tk.BooleanVar(value=False)
         self.pending_game_event: dict | None = None
@@ -117,7 +116,7 @@ class MiraApp(tk.Tk):
             self.last_local_model = self.model_var.get()
         self.fast_var = tk.BooleanVar(value=settings.get("fast_mode", True))
         self.deep_var = tk.BooleanVar(value=settings.get("deep_thinking", False))
-        self.voice_auto_var = tk.BooleanVar(value=settings.get("voice_auto", False))
+        self.voice_auto_var = tk.BooleanVar(value=settings.get("voice_auto") is True)
         self.playful_var = tk.BooleanVar(value=settings.get("persona_mode", "playful") == "playful")
         self.persona_note = str(settings.get("persona_note") or "")[:400]
         self.web_var = tk.BooleanVar(value=settings.get("web_enabled") is True)
@@ -2143,6 +2142,28 @@ class MiraApp(tk.Tk):
         else:
             self._speak(answer)
 
+    def _set_voice_auto(self, enabled: bool):
+        if type(enabled) is not bool:
+            raise ValueError("Cài đặt tự đọc phải là bật hoặc tắt.")
+        self.voice_auto_var.set(enabled)
+        if not enabled:
+            self.speaker.stop()
+            self.listen_button.configure(text="🔊 Nghe")
+            if not self.busy:
+                self.avatar_state = "idle"
+        # Apply before writing: disabling must silence the current session even
+        # if the settings file cannot be saved. The caller reports save errors.
+        self._save_settings()
+        if not self.busy:
+            self.status_var.set("Đã bật tự đọc câu trả lời." if enabled else
+                                "Đã tắt tự đọc. Bạn vẫn có thể bấm Nghe khi cần.")
+
+    def _voice_auto_changed(self):
+        try:
+            self._set_voice_auto(self.voice_auto_var.get())
+        except OSError as exc:
+            messagebox.showerror("Không lưu được cài đặt giọng đọc", str(exc), parent=self)
+
     def _speak(self, text):
         try:
             self.avatar_state = "speaking"
@@ -2187,10 +2208,12 @@ class MiraApp(tk.Tk):
                        activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(12, 0))
         tk.Label(dialog, text="Muốn nhanh hơn nữa: chạy ollama pull qwen3:1.7b rồi chọn mô hình đó.",
                  bg=BG, fg=MUTED, wraplength=510, justify="left").pack(anchor="w", padx=20)
-        dialog_voice = tk.BooleanVar(value=self.voice_auto_var.get())
         tk.Checkbutton(dialog, text="Tự đọc câu trả lời bằng giọng Windows (miễn phí, xử lý trên máy)",
-                       variable=dialog_voice, bg=BG, fg=TEXT, selectcolor=PANEL,
+                       variable=self.voice_auto_var, command=self._voice_auto_changed,
+                       bg=BG, fg=TEXT, selectcolor=PANEL,
                        activebackground=BG, activeforeground=TEXT).pack(anchor="w", padx=20, pady=(7, 0))
+        tk.Label(dialog, text="Giọng đọc áp dụng ngay. Nhập bằng mic không tự bật giọng trả lời.",
+                 bg=BG, fg=MUTED, wraplength=530, justify="left").pack(anchor="w", padx=20)
         tk.Label(dialog, text="Tính cách Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(14, 3))
         dialog_playful = tk.BooleanVar(value=self.playful_var.get())
@@ -2219,7 +2242,6 @@ class MiraApp(tk.Tk):
             self.name_var.set(chosen_name[:40])
             self.model_var.set(chosen_model)
             self.playful_var.set(dialog_playful.get())
-            self.voice_auto_var.set(dialog_voice.get())
             self.persona_note = persona_note.get("1.0", "end").strip()[:400]
             try:
                 self._save_settings()
@@ -2432,8 +2454,7 @@ class MiraApp(tk.Tk):
         def start():
             try:
                 start_windows_dictation()
-                self.voice_input_used = True
-                self.status_var.set("Windows đang nhập giọng nói vào ô chat. Xem lại câu và nhấn Gửi; Mira sẽ đọc câu trả lời.")
+                self.status_var.set("Windows đang nhập giọng nói vào ô chat. Xem lại câu và nhấn Gửi.")
             except (OSError, RuntimeError) as exc:
                 self.status_var.set(str(exc) + " Bạn cũng có thể tự nhấn Windows + H trong ô chat.")
 
@@ -2590,9 +2611,7 @@ class MiraApp(tk.Tk):
                     self.learning.observe_user(text, chat_id, self.memories)
                 except (OSError, ValueError) as exc:
                     self.status_var.set("Tin nhắn đã lưu; chưa lưu được gợi ý bộ nhớ: " + str(exc))
-        voice_input = self.voice_input_used if game_event is None else False
         if game_event is None:
-            self.voice_input_used = False
             self._clear_image()
         self.busy = True
         self.last_error = ""
@@ -2711,7 +2730,7 @@ class MiraApp(tk.Tk):
                     self.status_var.set(f"Sẵn sàng • trả lời trong {time.monotonic() - started:.1f} giây")
                 self.busy = False
                 self.send_button.configure(state="normal")
-                if not error and (voice_input or self.voice_auto_var.get()) and self.active_chat_id == chat_id:
+                if not error and not self.closed and self.voice_auto_var.get() and self.active_chat_id == chat_id:
                     self._speak(answer)
                 if self.game_react_var.get() and self.pending_game_event is not None:
                     pending, self.pending_game_event = self.pending_game_event, None
