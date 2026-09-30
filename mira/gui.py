@@ -24,6 +24,7 @@ from .desktop import DesktopController, capture_primary_screen
 from .device import device_status
 from .game_bridge import GameBridge
 from .lessons import LessonStore
+from .learning import LearningStore
 from .mobile_server import PhoneServer
 from .preferences import PreferenceStore
 from .preferences_ui import open_preference_dialog
@@ -54,8 +55,11 @@ MIRA_CARD = "#ffffff"
 
 
 class MiraApp(tk.Tk):
-    def __init__(self):
+    def __init__(self, *, studio=False):
         super().__init__()
+        self.studio_mode = studio
+        self.studio = None
+        self.last_error = ""
         self.title("Mira • trợ lý cá nhân")
         self.geometry("1280x820")
         self.minsize(880, 620)
@@ -76,6 +80,7 @@ class MiraApp(tk.Tk):
         if not isinstance(settings, dict):
             raise ValueError("Cài đặt Mira không đúng định dạng.")
         self.memories = MemoryStore(self.path / "memories.json")
+        self.learning = LearningStore(self.path / "learning.json")
         self.cloud_phone_url = str(settings.get("cloud_phone_url") or "")
         self.cloud_phone_key = ""  # Only kept in RAM for this desktop session.
         self.lessons = LessonStore(self.path / "game_lessons.json")
@@ -157,12 +162,33 @@ class MiraApp(tk.Tk):
         self.after(200, self._check_ollama)
         self.after(280, self._animate_avatar)
         self.after(5_000, self._poll_reminders)
+        self.after(15_000, self._poll_learning)
         saved_bot = load_json(self.telegram_credentials_path, {})
         if isinstance(saved_bot, dict) and saved_bot.get("enabled") and isinstance(saved_bot.get("token"), str):
             try:
                 self._start_telegram(saved_bot["token"])
             except (OSError, ValueError):
                 self.status_var.set("Telegram chưa kết nối được; mở mục Điện thoại để kiểm tra.")
+
+    def _present_dialog(self, dialog):
+        if not self.studio_mode:
+            dialog.transient(self)
+        else:
+            dialog.lift()
+            dialog.attributes("-topmost", True)
+            dialog.after(200, lambda: dialog.attributes("-topmost", False)
+                         if dialog.winfo_exists() else None)
+
+    def _poll_learning(self):
+        if self.closed:
+            return
+        try:
+            report = self.learning.study(busy=self.busy)
+            if report:
+                self.status_var.set(report["title"])
+        except (OSError, ValueError) as exc:
+            self.status_var.set("Không lưu được phần ôn tập: " + str(exc))
+        self.after(15_000, self._poll_learning)
 
     def _button(self, parent, label, command, *, primary=False, subtle=False,
                 compact=False, background=None, rounded=False):
@@ -644,7 +670,11 @@ class MiraApp(tk.Tk):
             self.phone_server.update_config(status_reader=self._read_status_if_enabled if self.device_enabled else None)
 
     def _close(self):
+        if self.closed:
+            return
         self.closed = True
+        if self.studio:
+            self.studio.stop()
         self.lessons.stop_event.set()
         self.device_enabled = False
         self.phone_screen_enabled = False
@@ -689,6 +719,8 @@ class MiraApp(tk.Tk):
     def _animate_avatar(self):
         if self.closed:
             return
+        if self.studio_mode:
+            return  # The HTML renderer owns the visible avatar; don't animate hidden canvases.
         self.avatar_tick += 1
         self.avatar.set_state(self.avatar_state, self.avatar_tick)
         self.rail_avatar.set_state(self.avatar_state, self.avatar_tick)
@@ -699,7 +731,7 @@ class MiraApp(tk.Tk):
         dialog.title("Nhân vật anime của Mira")
         dialog.geometry("530x530")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Nhân vật Mira", font=("Segoe UI", 18, "bold"),
                  bg=BG, fg=TEXT).pack(pady=(18, 4))
         tk.Label(dialog, text="Nhấp vào ảnh nhỏ ở góc chat để mở lại. Mira chớp mắt, suy nghĩ "
@@ -777,6 +809,8 @@ class MiraApp(tk.Tk):
     def _render_chat(self):
         item = self.chats.get(self.active_chat_id)
         self.title_var.set(item.get("title", "Cuộc trò chuyện"))
+        if self.studio_mode:
+            return
         self._remove_pending()
         for widget in self.messages_frame.winfo_children():
             widget.destroy()
@@ -894,6 +928,8 @@ class MiraApp(tk.Tk):
         return row, body
 
     def _add_message(self, sender: str, content: str, *, user=False):
+        if self.studio_mode:
+            return
         at_bottom = self.feed_canvas.yview()[1] >= 0.96
         self._message_card(sender, content, user=user)
         if at_bottom:
@@ -925,6 +961,8 @@ class MiraApp(tk.Tk):
             self._pending_label = None
 
     def _show_pending(self, name: str):
+        if self.studio_mode:
+            return
         if self._pending_label is None:
             self._pending_row, self._pending_label = self._message_card(
                 name, "Đang chuẩn bị câu trả lời…")
@@ -1089,7 +1127,7 @@ class MiraApp(tk.Tk):
         dialog.geometry("680x490")
         dialog.minsize(460, 320)
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Những điều bạn dạy Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 4))
         tk.Label(dialog, text="Mira dùng các ghi nhớ này khi chat. Bạn có thể thêm hoặc quên từng mục.",
@@ -1235,7 +1273,7 @@ class MiraApp(tk.Tk):
         dialog.title("Mira trên điện thoại khi laptop tắt")
         dialog.geometry("640x510")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Mira đi cùng bạn", bg=BG, fg=TEXT,
                  font=("Segoe UI", 20, "bold")).pack(anchor="w", padx=22, pady=(22, 7))
         tk.Label(dialog, text="Giao diện điện thoại cloud chạy độc lập: chat, sở thích, "
@@ -1276,7 +1314,7 @@ class MiraApp(tk.Tk):
         dialog.title("Điện thoại & truy cập từ xa")
         dialog.geometry("700x745")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Kết nối với laptop đang bật", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
         instructions = ("1. Cài Tailscale trên máy tính và điện thoại; đăng nhập cùng tài khoản.\n"
@@ -1424,7 +1462,7 @@ class MiraApp(tk.Tk):
         dialog.title("Mira qua Telegram")
         dialog.geometry("670x620")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Mira nhắn lịch qua Telegram", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(17, 8))
         tk.Label(dialog, text="1. Nhắn /newbot cho @BotFather trên Telegram. Sao chép token bot.\n"
@@ -1519,7 +1557,7 @@ class MiraApp(tk.Tk):
         dialog.title("Lịch nhắc của Mira")
         dialog.geometry("650x610")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Lịch nhắc của Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(15, 7))
         tk.Label(dialog, text="Nhắc trên máy khi Mira đang mở. Xuất .ics để "
@@ -1660,7 +1698,7 @@ class MiraApp(tk.Tk):
         dialog.title("Chơi game với Mira")
         dialog.geometry("670x510")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Mira hiểu sự kiện trong game", font=("Segoe UI", 17, "bold"),
                  bg=BG, fg=TEXT).pack(anchor="w", padx=20, pady=(17, 6))
         tk.Label(dialog, text="Game gửi trạng thái và các nước đi hợp lệ qua cổng chỉ mở trên PC này. "
@@ -1819,7 +1857,7 @@ class MiraApp(tk.Tk):
         dialog.title("Mô hình mạnh & tốc độ")
         dialog.geometry("660x450")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Chọn sức mạnh theo đúng máy bạn", bg=BG, fg=TEXT,
                  font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=20, pady=(17, 8))
         description = ("qwen3.5:9b (tải ~6,6 GB): giỏi hơn cho trò chuyện, code và ảnh, "
@@ -1968,7 +2006,7 @@ class MiraApp(tk.Tk):
         dialog.title("AI cloud cho máy yếu")
         dialog.geometry("680x570")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Mira trên máy yếu", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(18, 8))
         intro = ("Mira và Ollama vẫn mở trên máy; mô hình cloud xử lý trên máy chủ. "
@@ -2128,7 +2166,7 @@ class MiraApp(tk.Tk):
         dialog.title("Mô hình & cài đặt")
         dialog.geometry("600x640")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Thiết lập Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 17, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
         tk.Label(dialog, text="Tên gọi", bg=BG, fg=MUTED).pack(anchor="w", padx=20)
@@ -2217,7 +2255,7 @@ class MiraApp(tk.Tk):
         dialog.title("Cài Ollama cho Mira")
         dialog.geometry("550x440")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         tk.Label(dialog, text="Bắt đầu trò chuyện với Mira", bg=BG, fg=TEXT,
                  font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=20, pady=(20, 12))
         instructions = ("1. Cài Ollama cho Windows rồi mở Ollama.\n\n"
@@ -2313,7 +2351,10 @@ class MiraApp(tk.Tk):
             return
         error = None
         try:
-            self.iconify()  # Reveal the app behind Mira in the screenshot.
+            if self.studio:
+                self.studio.minimize()
+            else:
+                self.iconify()
             self.update_idletasks()
             time.sleep(0.3)
             data = capture_primary_screen()
@@ -2321,8 +2362,11 @@ class MiraApp(tk.Tk):
             error = str(exc)
         finally:
             if not self.closed:
-                self.deiconify()
-                self.lift()
+                if self.studio:
+                    self.studio.restore()
+                else:
+                    self.deiconify()
+                    self.lift()
         if error:
             messagebox.showerror("Không chụp được màn hình", error, parent=self)
             return
@@ -2337,7 +2381,7 @@ class MiraApp(tk.Tk):
         dialog = tk.Toplevel(self)
         dialog.title("Xem trước màn hình gửi cho Mira")
         dialog.configure(bg=BG)
-        dialog.transient(self)
+        self._present_dialog(dialog)
         dialog.grab_set()
         tk.Label(dialog, text="Ảnh màn hình chính vừa chụp • " + f"{width} × {height}",
                  bg=BG, fg=TEXT, font=("Segoe UI", 12, "bold")).pack(padx=18, pady=(16, 8))
@@ -2418,7 +2462,7 @@ class MiraApp(tk.Tk):
             dialog.title("Duyệt thay đổi • " + path)
             dialog.geometry("880x640")
             dialog.minsize(650, 420)
-            dialog.transient(self)
+            self._present_dialog(dialog)
             dialog.grab_set()
             tk.Label(dialog, text=f"File: {path}\nLý do: {reason}\nChỉ ghi nếu bạn chọn Duyệt. File cũ được sao lưu.",
                      justify="left", anchor="w", padx=16, pady=12, wraplength=820).pack(fill="x")
@@ -2469,8 +2513,9 @@ class MiraApp(tk.Tk):
             if self.closed or not self.desktop_enabled:
                 done.set()
                 return
-            self.deiconify()
-            self.lift()
+            if not self.studio:
+                self.deiconify()
+                self.lift()
             decision[0] = messagebox.askyesno(
                 "Duyệt thao tác trên máy",
                 "Mira đề nghị thao tác này:\n\n" + description +
@@ -2479,7 +2524,10 @@ class MiraApp(tk.Tk):
                 parent=self,
             )
             if decision[0] and not self.closed and self.desktop_enabled:
-                self.iconify()
+                if self.studio:
+                    self.studio.minimize()
+                else:
+                    self.iconify()
                 self.desktop_hid_for_action = True
                 self.after(300, done.set)
             else:
@@ -2511,6 +2559,7 @@ class MiraApp(tk.Tk):
             text = "Hãy xem ảnh này và giúp tôi hiểu hoặc xử lý vấn đề."
         if not text:
             return
+        self.learning.touch()
         display_text = text + (f"\n[Đính kèm ảnh: {image_name}]" if image_name else "")
         chat_id = self.active_chat_id
         name = self.name_var.get().strip()[:40] or "Mira"
@@ -2536,11 +2585,17 @@ class MiraApp(tk.Tk):
             return
         if game_event is None:
             self.input.delete("1.0", "end")
+            if not retry:
+                try:
+                    self.learning.observe_user(text, chat_id, self.memories)
+                except (OSError, ValueError) as exc:
+                    self.status_var.set("Tin nhắn đã lưu; chưa lưu được gợi ý bộ nhớ: " + str(exc))
         voice_input = self.voice_input_used if game_event is None else False
         if game_event is None:
             self.voice_input_used = False
             self._clear_image()
         self.busy = True
+        self.last_error = ""
         self.retry_text = None
         self.retry_chat_id = None
         self.retry_image = None
@@ -2558,6 +2613,10 @@ class MiraApp(tk.Tk):
         workspace = None if game_event else self.workspace
         memories = ("Bộ sở thích:\n" + self.preferences.prompt_for(text) +
                     "\nGhi nhớ được chọn:\n" + (self.memories.prompt_for(text) or "(chưa có)"))
+        if game_event is None:
+            knowledge = self.learning.prompt_for(text)
+            if knowledge:
+                memories += "\n\n" + knowledge
         fast = self.fast_var.get()
         persona = "playful" if self.playful_var.get() else "standard"
         persona_note = self.persona_note
@@ -2616,8 +2675,11 @@ class MiraApp(tk.Tk):
 
             def complete():
                 if self.desktop_hid_for_action and not self.closed:
-                    self.deiconify()
-                    self.lift()
+                    if self.studio:
+                        self.studio.restore()
+                    else:
+                        self.deiconify()
+                        self.lift()
                     self.desktop_hid_for_action = False
                 drain()
                 self._remove_pending()
@@ -2625,6 +2687,7 @@ class MiraApp(tk.Tk):
                 self.stream_text = ""
                 self.avatar_state = "idle"
                 if error:
+                    self.last_error = error
                     if game_event is None:
                         self.retry_text = text
                         self.retry_chat_id = chat_id
@@ -2665,7 +2728,19 @@ class MiraApp(tk.Tk):
 
 def main():
     try:
-        app = MiraApp()
+        classic = "--classic" in sys.argv
+        app = MiraApp(studio=not classic)
+        if not classic:
+            from .studio import DesktopStudio
+            app.studio = DesktopStudio(app)
+            try:
+                app.studio.start()
+            except (OSError, RuntimeError) as exc:
+                app.studio.stop()
+                app.studio = None
+                app.studio_mode = False
+                app.deiconify()
+                messagebox.showinfo("Mira Studio", str(exc) + "\nĐang dùng giao diện cổ điển.", parent=app)
     except (OSError, ValueError) as exc:
         root = tk.Tk()
         root.withdraw()
